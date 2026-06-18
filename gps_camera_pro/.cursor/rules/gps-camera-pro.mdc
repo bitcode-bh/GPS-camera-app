@@ -1,0 +1,29 @@
+---
+description: GPS Camera Pro project context and conventions
+alwaysApply: true
+---
+
+# GPS Camera Pro
+
+Flutter geostamp camera app. Full context: `PROJECT_CONTEXT.md`.
+
+## Stack
+Dart 3 / Flutter · singleton `ChangeNotifier`s (`SettingsController`, `TemplateController`) + `ListenableBuilder` · no Provider/Riverpod.
+
+## Structure
+- `lib/screens/camera/camera_screen.dart` — main viewfinder + in-app gallery
+- `lib/widgets/geo_stamp.dart` — stamp (preview + capture)
+- `lib/services/` — location, capture, camera capabilities
+- Android channel `com.gpscamera.gps_camera_pro/gallery` in `MainActivity.kt`
+
+## Must not break (performance)
+1. No whole-tree clock ticks — use `TickingBuilder` in `GeoStamp`
+2. `GlassSurface` blur only on major panels; chips use `FrostedChip`
+3. Template previews: `realMap: false` on `GeoStamp`/`MiniMap`
+4. Throttle reverse geocoding (25 m threshold in `LocationService`)
+
+## Design
+Dark-only UI · aurora palette in `lib/core/design/palette.dart` · active controls = frosted glass, not brand-colored fills.
+
+## Code style
+Minimal diffs · match existing patterns · graceful fallbacks in services · portrait-only app.
