@@ -228,6 +228,35 @@ class MainActivity : FlutterActivity() {
                         }
                     }
 
+                    // Composite a native full-res JPEG with a stamp PNG drawn over it.
+                    // The stamp is scaled to the JPEG width and drawn at the bottom.
+                    "compositeNativeJpeg" -> {
+                        val jpeg = call.argument<ByteArray>("jpeg")
+                        val stampPng = call.argument<ByteArray>("stampPng")
+                        val quality = call.argument<Int>("quality") ?: 92
+                        if (jpeg == null || stampPng == null) {
+                            result.error("ARGS", "jpeg and stampPng required", null)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            val base = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size)
+                            val stamp = BitmapFactory.decodeByteArray(stampPng, 0, stampPng.size)
+                            val canvas = android.graphics.Canvas(base)
+                            val scale = base.width.toFloat() / stamp.width
+                            val scaledH = (stamp.height * scale).toInt()
+                            val scaledStamp = android.graphics.Bitmap.createScaledBitmap(stamp, base.width, scaledH, true)
+                            canvas.drawBitmap(scaledStamp, 0f, (base.height - scaledH).toFloat(), null)
+                            scaledStamp.recycle()
+                            stamp.recycle()
+                            val out = ByteArrayOutputStream()
+                            base.compress(android.graphics.Bitmap.CompressFormat.JPEG, quality, out)
+                            base.recycle()
+                            result.success(out.toByteArray())
+                        } catch (e: Exception) {
+                            result.error("COMPOSITE_FAILED", e.message, null)
+                        }
+                    }
+
                     else -> result.notImplemented()
                 }
             }

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
@@ -47,6 +48,32 @@ class CaptureService {
         'album': 'GPS Camera',
       });
       return ref;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Composites a stamp [RenderRepaintBoundary] over a native full-res JPEG at
+  /// [nativePath]. The stamp is rasterized at screen resolution, sent to Android
+  /// together with the JPEG, scaled to full width, and drawn at the bottom.
+  /// Returns the composited JPEG bytes, or null on failure.
+  Future<Uint8List?> compositeNativeWithStamp(
+    String nativePath,
+    RenderRepaintBoundary stampBoundary, {
+    int quality = 92,
+  }) async {
+    try {
+      final nativeJpeg = await File(nativePath).readAsBytes();
+      final stampImage = await stampBoundary.toImage(pixelRatio: 1.0);
+      final stampPng =
+          await stampImage.toByteData(format: ui.ImageByteFormat.png);
+      stampImage.dispose();
+      if (stampPng == null) return null;
+      return await _channel.invokeMethod<Uint8List>('compositeNativeJpeg', {
+        'jpeg': nativeJpeg,
+        'stampPng': stampPng.buffer.asUint8List(),
+        'quality': quality,
+      });
     } catch (_) {
       return null;
     }
@@ -138,18 +165,27 @@ class CaptureService {
   }
 
   /// All locally cached captures, newest first.
+  ///
+  /// The directory scan + sort runs on a background isolate via [Isolate.run]
+  /// so opening the gallery never blocks the UI thread, even with thousands of
+  /// captures. Returns paths (isolates can't return live [File] handles), which
+  /// are rehydrated into [File]s on return.
   Future<List<File>> getLocalCaptures() async {
     try {
       final dir = await getApplicationDocumentsDirectory();
-      final capturesDir = Directory('${dir.path}/captures');
-      if (!capturesDir.existsSync()) return [];
-      final files = capturesDir
-          .listSync()
-          .whereType<File>()
-          .where((f) => f.path.endsWith('.jpg') || f.path.endsWith('.png'))
-          .toList()
-        ..sort((a, b) => b.path.compareTo(a.path));
-      return files;
+      final capturesPath = '${dir.path}/captures';
+      final paths = await Isolate.run<List<String>>(() {
+        final capturesDir = Directory(capturesPath);
+        if (!capturesDir.existsSync()) return const [];
+        return capturesDir
+            .listSync()
+            .whereType<File>()
+            .map((f) => f.path)
+            .where((p) => p.endsWith('.jpg') || p.endsWith('.png'))
+            .toList()
+          ..sort((a, b) => b.compareTo(a));
+      });
+      return paths.map((p) => File(p)).toList();
     } catch (_) {
       return [];
     }

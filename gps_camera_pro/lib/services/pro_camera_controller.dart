@@ -13,6 +13,8 @@ class ProCameraController {
   int? textureId;
   int previewWidth = 0;
   int previewHeight = 0;
+  int sensorOrientation = 90;
+  bool front = false;
   bool get isOpen => textureId != null;
 
   Stream<Map<String, dynamic>> get events => _events
@@ -31,6 +33,8 @@ class ProCameraController {
     textureId = res['textureId'] as int?;
     previewWidth = (res['previewWidth'] as int?) ?? 0;
     previewHeight = (res['previewHeight'] as int?) ?? 0;
+    sensorOrientation = (res['sensorOrientation'] as int?) ?? 90;
+    this.front = (res['front'] as bool?) ?? front;
     return textureId;
   }
 
@@ -64,6 +68,11 @@ class ProCameraController {
   /// Captures a still JPEG to [path] using the current manual settings.
   Future<String?> capture(String path) =>
       _method.invokeMethod<String>('capture', {'path': path});
+
+  /// Captures 3 bracketed JPEG frames and Mertens-fuses them into a single
+  /// HDR JPEG written to [path].
+  Future<String?> captureHdr(String path) =>
+      _method.invokeMethod<String>('captureHdr', {'path': path});
 
   Future<void> close() async {
     await _method.invokeMethod('close');

@@ -8,7 +8,7 @@ import '../models/geo_data.dart';
 import '../models/map_kind.dart';
 
 enum RawCaptureMode { jpeg, raw, rawJpeg }
-enum HdrMode { auto, on, off }
+enum HdrMode { auto, on, off, multiFrame }
 enum NightMode { off, on }
 enum GridType { thirds, square, golden }
 enum ProWhiteBalance { auto, daylight, cloudy, shade, fluorescent, incandescent, kelvin }
@@ -33,7 +33,7 @@ class SettingsController extends ChangeNotifier {
   bool gridLines = false;
   GridType gridType = GridType.thirds;
   bool shutterSound = true;
-  CaptureRatio captureRatio = CaptureRatio.full;
+  CaptureRatio captureRatio = CaptureRatio.r4_3;
   bool watermark = true;
   bool saveLocation = true;
   bool levelIndicator = false;
@@ -79,7 +79,7 @@ class SettingsController extends ChangeNotifier {
     gridType = _read(GridType.values, s.getString('gridType'), GridType.thirds);
     shutterSound = s.getBool('shutterSound') ?? true;
     captureRatio =
-        _read(CaptureRatio.values, s.getString('captureRatio'), CaptureRatio.full);
+        _read(CaptureRatio.values, s.getString('captureRatio'), CaptureRatio.r4_3);
     watermark = s.getBool('watermark') ?? true;
     saveLocation = s.getBool('saveLocation') ?? true;
     levelIndicator = s.getBool('levelIndicator') ?? false;

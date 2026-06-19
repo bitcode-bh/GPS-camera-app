@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
+
+import 'package:path_provider/path_provider.dart';
 
 import 'package:camera/camera.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_compass/flutter_compass.dart';
@@ -14,7 +16,6 @@ import '../../core/design/palette.dart';
 import '../../core/design/text_styles.dart';
 import '../../core/design/tokens.dart';
 import '../../core/glass.dart';
-import '../../core/widgets/controls.dart';
 import '../../core/widgets/pressable.dart';
 import '../../models/capture_options.dart';
 import '../../models/geo_data.dart';
@@ -46,10 +47,14 @@ class _CameraScreenState extends State<CameraScreen>
   final _settings = SettingsController.instance;
   final _templates = TemplateController.instance;
   final _freezeKey = GlobalKey();
+  // Raster key for the stamp-only RepaintBoundary — used by the full-res native
+  // capture path to composite just the stamp over the sensor-resolution JPEG.
+  final _stampRasterKey = GlobalKey();
   Uint8List? _lastShot; // most recent capture, for the gallery thumbnail
   bool _isZoomMode = true; // Zoom/Exposure mode switcher state
-  ProControlMode _activeProControl = ProControlMode.zoom;
-  ProControlMode _lastActiveProControl = ProControlMode.exposure;
+  // Zoom is no longer a Pro-menu chip (pinch still zooms), so the active Pro
+  // control defaults to exposure rather than the now-absent zoom mode.
+  ProControlMode _activeProControl = ProControlMode.exposure;
   double _proDragAccum = 0; // accumulated viewfinder drag for pro-control steps
 
   // Native Camera2 manual-sensor backend (used while in Pro mode so ISO/shutter/
@@ -58,7 +63,7 @@ class _CameraScreenState extends State<CameraScreen>
   // apply at the HAL, but live preview display via the Flutter texture is not
   // yet rendering on Impeller — kept off until that's resolved so the working
   // plugin preview stays intact. Flip to true to resume the native pipeline.
-  static const bool _useNativePro = false;
+  static const bool _useNativePro = true;
   final ProCameraController _proCam = ProCameraController();
   bool _proActive = false;
   bool _proSwitching = false;
@@ -72,14 +77,16 @@ class _CameraScreenState extends State<CameraScreen>
   GeoData _geo = GeoData.demo();
 
   // Live magnetometer compass (GPS heading is only valid while moving).
+  // Kept in a ValueNotifier so compass ticks only repaint the stamp widget
+  // instead of rebuilding the entire camera screen at ~12 fps.
   StreamSubscription<CompassEvent>? _compassSub;
-  double? _compassHeading;
+  final ValueNotifier<double?> _compassHeading = ValueNotifier(null);
   DateTime _lastCompassTick = DateTime.fromMillisecondsSinceEpoch(0);
 
   /// Geo snapshot with the live compass heading folded in (used by the stamp,
   /// mini-map pin and capture so the heading/compass update in real time).
   GeoData get _stampGeo =>
-      _compassHeading == null ? _geo : _geo.copyWith(heading: _compassHeading);
+      _compassHeading.value == null ? _geo : _geo.copyWith(heading: _compassHeading.value);
 
   // Computed once when camera limits are known; never recomputed on every build.
   List<double> _zoomLevels = const [1.0];
@@ -153,7 +160,9 @@ class _CameraScreenState extends State<CameraScreen>
   int _countdown = 0; // self-timer countdown shown over the viewfinder
 
   bool _level = false; // horizon level overlay
-  double _roll = 0;
+  // Level roll lives in a notifier so high-frequency accelerometer updates only
+  // repaint the level overlay instead of rebuilding the whole camera screen.
+  final ValueNotifier<double> _roll = ValueNotifier(0.0);
   StreamSubscription<AccelerometerEvent>? _accelSub;
   bool _toolsOpen = false; // camera tool strip expanded
   bool _settingsOpen = false; // app settings strip expanded
@@ -177,7 +186,6 @@ class _CameraScreenState extends State<CameraScreen>
 
   // ── Live histogram stream ─────────────────────────────────────────────────
   bool _histogramStreaming = false;
-  int _histogramFrameCount = 0;
   List<int>? _histogramData;
 
   Offset? _focus;
@@ -190,7 +198,14 @@ class _CameraScreenState extends State<CameraScreen>
     // Settings changes (grid, map type, formats…) are infrequent and may affect
     // top-level chrome, so rebuild the screen when they change.
     _settings.addListener(_onSettings);
-    _proCam.events.listen((e) => debugPrint('ProCam event: $e'));
+    _proCam.events.listen((e) {
+      if (!mounted) return;
+      final event = e['event'] as String?;
+      if (event == 'histogram' && _histogramStreaming) {
+        final data = e['data'];
+        if (data is List) setState(() => _histogramData = data.cast<int>());
+      }
+    });
     // Detect hardware capabilities up front so the Pro chips gate correctly
     // even when we launch straight into the native (Pro) backend.
     CameraCapabilityService.instance.detect().then((_) {
@@ -225,13 +240,14 @@ class _CameraScreenState extends State<CameraScreen>
     if (h == null || !mounted) return;
     final norm = (h % 360 + 360) % 360;
     final now = DateTime.now();
-    // Throttle: at most ~12 fps and only on a meaningful change, so the live
-    // heading never floods the stamp/map with rebuilds.
-    final delta = ((norm - (_compassHeading ?? -999)).abs()) % 360;
+    // Throttle: at most ~12 fps and only on a meaningful change.
+    // Updating the ValueNotifier instead of setState means only the stamp
+    // widget rebuilds — not the entire camera screen.
+    final delta = ((norm - (_compassHeading.value ?? -999)).abs()) % 360;
     if (now.difference(_lastCompassTick).inMilliseconds < 80) return;
-    if (_compassHeading != null && delta < 1.0) return;
+    if (_compassHeading.value != null && delta < 1.0) return;
     _lastCompassTick = now;
-    setState(() => _compassHeading = norm);
+    _compassHeading.value = norm;
   }
 
   void _onSettings() {
@@ -342,6 +358,8 @@ class _CameraScreenState extends State<CameraScreen>
     }
     _cam?.dispose();
     _proCam.close();
+    _roll.dispose();
+    _compassHeading.dispose();
     super.dispose();
   }
 
@@ -378,7 +396,14 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Future<void> _resumeCameraAfterLifecycle() async {
-    if (_cameras.isEmpty || _cameraSleeping) return;
+    if (_cameraSleeping) return;
+    // Native (Pro) backend: reopen the Camera2 session it released on pause.
+    if (_useNativePro && _settings.proMode) {
+      if (!_proActive) await _enterProBackend();
+      _resetIdleTimer();
+      return;
+    }
+    if (_cameras.isEmpty) return;
     while (_initializing && mounted && !_pausedByLifecycle) {
       await Future<void>.delayed(const Duration(milliseconds: 50));
     }
@@ -390,6 +415,14 @@ class _CameraScreenState extends State<CameraScreen>
   Future<void> _pauseCameraForLifecycle() async {
     _pausedByLifecycle = true;
     _idleTimer?.cancel();
+    // Release the native Camera2 session so it isn't held in the background.
+    if (_proActive) {
+      _proActive = false;
+      _proTextureId = null;
+      if (mounted) setState(() {});
+      await _proCam.close();
+      return;
+    }
     final cam = _cam;
     _cam = null;
     if (mounted) setState(() {});
@@ -551,6 +584,7 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   /// Steps the active pro control one value. Right = previous value, left = next.
+  /// Clamps at the ends — no wrap-around looping.
   void _stepProControl(bool isRight) {
     final caps = CameraCapabilityService.instance;
     switch (_activeProControl) {
@@ -558,8 +592,8 @@ class _CameraScreenState extends State<CameraScreen>
         final currentIdx = _zoomLevels.indexOf(_zoom);
         if (currentIdx >= 0) {
           final nextIdx = isRight
-              ? (currentIdx - 1 + _zoomLevels.length) % _zoomLevels.length
-              : (currentIdx + 1) % _zoomLevels.length;
+              ? (currentIdx - 1).clamp(0, _zoomLevels.length - 1)
+              : (currentIdx + 1).clamp(0, _zoomLevels.length - 1);
           _setZoom(_zoomLevels[nextIdx]);
         }
         break;
@@ -568,8 +602,8 @@ class _CameraScreenState extends State<CameraScreen>
         final currentIdx = _exposureLevels.indexOf(_exposure);
         if (currentIdx >= 0) {
           final nextIdx = isRight
-              ? (currentIdx - 1 + _exposureLevels.length) % _exposureLevels.length
-              : (currentIdx + 1) % _exposureLevels.length;
+              ? (currentIdx - 1).clamp(0, _exposureLevels.length - 1)
+              : (currentIdx + 1).clamp(0, _exposureLevels.length - 1);
           _setExposure(_exposureLevels[nextIdx]);
         }
         break;
@@ -584,8 +618,8 @@ class _CameraScreenState extends State<CameraScreen>
           nextIdx = isRight ? isoValues.length - 1 : 0;
         } else {
           nextIdx = isRight
-              ? (currentIdx - 1 + isoValues.length) % isoValues.length
-              : (currentIdx + 1) % isoValues.length;
+              ? (currentIdx - 1).clamp(0, isoValues.length - 1)
+              : (currentIdx + 1).clamp(0, isoValues.length - 1);
         }
         _setIso(isoValues[nextIdx]);
         break;
@@ -601,19 +635,34 @@ class _CameraScreenState extends State<CameraScreen>
           nextIdx = isRight ? shutters.length - 1 : 0;
         } else {
           nextIdx = isRight
-              ? (currentIdx - 1 + shutters.length) % shutters.length
-              : (currentIdx + 1) % shutters.length;
+              ? (currentIdx - 1).clamp(0, shutters.length - 1)
+              : (currentIdx + 1).clamp(0, shutters.length - 1);
         }
         _setShutter(shutters[nextIdx]);
         break;
 
       case ProControlMode.wb:
-        final wbOptions = supportedWhiteBalances(caps);
-        final currentIdx = wbOptions.indexOf(_settings.whiteBalance);
-        final nextIdx = isRight
-            ? (currentIdx - 1 + wbOptions.length) % wbOptions.length
-            : (currentIdx + 1) % wbOptions.length;
-        _setWhiteBalance(wbOptions[nextIdx]);
+        if (_settings.whiteBalance == ProWhiteBalance.kelvin) {
+          // In Kelvin mode: step temperature in 100K increments, clamped.
+          final newK =
+              (_settings.kelvin + (isRight ? -100 : 100)).clamp(2500, 8000);
+          _settings.update(() => _settings.kelvin = newK);
+          if (_proActive) _pushProControls();
+          _showNotification('WB ${newK}K');
+        } else {
+          // Preset mode: exclude Kelvin so the cycle stays within named
+          // presets — landing on Kelvin would flip the bar to raw numbers.
+          final all = supportedWhiteBalances(caps);
+          final wbOptions =
+              all.where((w) => w != ProWhiteBalance.kelvin).toList();
+          if (wbOptions.isEmpty) break;
+          final currentIdx = wbOptions.indexOf(_settings.whiteBalance);
+          final safeIdx = currentIdx < 0 ? 0 : currentIdx;
+          final nextIdx = isRight
+              ? (safeIdx - 1).clamp(0, wbOptions.length - 1)
+              : (safeIdx + 1).clamp(0, wbOptions.length - 1);
+          _setWhiteBalance(wbOptions[nextIdx]);
+        }
         break;
 
       case ProControlMode.focus:
@@ -622,8 +671,8 @@ class _CameraScreenState extends State<CameraScreen>
             .indexWhere((v) => (v - _settings.manualFocus).abs() < 0.01);
         if (currentIdx >= 0) {
           final nextIdx = isRight
-              ? (currentIdx - 1 + focusLevels.length) % focusLevels.length
-              : (currentIdx + 1) % focusLevels.length;
+              ? (currentIdx - 1).clamp(0, focusLevels.length - 1)
+              : (currentIdx + 1).clamp(0, focusLevels.length - 1);
           _setManualFocus(focusLevels[nextIdx]);
         }
         break;
@@ -632,8 +681,8 @@ class _CameraScreenState extends State<CameraScreen>
         final modes = MeteringMode.values;
         final currentIdx = modes.indexOf(_settings.meteringMode);
         final nextIdx = isRight
-            ? (currentIdx - 1 + modes.length) % modes.length
-            : (currentIdx + 1) % modes.length;
+            ? (currentIdx - 1).clamp(0, modes.length - 1)
+            : (currentIdx + 1).clamp(0, modes.length - 1);
         _setMetering(modes[nextIdx]);
         break;
     }
@@ -778,67 +827,30 @@ class _CameraScreenState extends State<CameraScreen>
         ).listen((e) {
           // Roll around the viewing axis: 0° when the phone is upright/level.
           final roll = math.atan2(e.x, e.y) * 180 / math.pi;
-          if (mounted && (roll - _roll).abs() > 0.3) {
-            setState(() => _roll = roll);
+          if (mounted && (roll - _roll.value).abs() > 0.3) {
+            _roll.value = roll; // repaints only the level overlay
           }
         });
   }
 
+  // Histogram data now comes from the native Camera2 YUV reader via the
+  // ProCamera2 event channel. _histogramStreaming gates whether incoming
+  // histogram events are applied to state.
   Future<void> _startHistogramStream() async {
-    final cam = _cam;
-    if (_histogramStreaming || cam == null || !cam.value.isInitialized) return;
-    // Only start if histogram is actually enabled
-    if (!(_settings.proMode && _settings.histogram)) return;
-    try {
-      _histogramStreaming = true;
-      await cam.startImageStream(_processHistogramFrame);
-    } catch (_) {
-      _histogramStreaming = false;
-    }
+    if (_histogramStreaming) return;
+    if (!(_settings.proMode && _settings.histogram && _proActive)) return;
+    _histogramStreaming = true;
   }
 
   Future<void> _stopHistogramStream() async {
     if (!_histogramStreaming) return;
     _histogramStreaming = false;
-    try {
-      await _cam?.stopImageStream();
-    } catch (_) {}
     if (mounted) setState(() => _histogramData = null);
   }
 
-  void _processHistogramFrame(CameraImage image) {
-    // Fast exit if histogram disabled or widget not mounted
-    if (!_histogramStreaming || !mounted || !_settings.histogram) return;
-    _histogramFrameCount++;
-    // Sample 1-in-10 frames instead of 1-in-8 for better performance
-    if (_histogramFrameCount % 10 != 0) return;
-
-    try {
-      final yPlane = image.planes[0];
-      final bytes = yPlane.bytes;
-      final stride = yPlane.bytesPerRow;
-      final histogram = List<int>.filled(256, 0);
-      const step = 8; // sample every 8th pixel instead of 6 for faster processing
-
-      for (int y = 0; y < image.height; y += step) {
-        for (int x = 0; x < image.width; x += step) {
-          final idx = y * stride + x;
-          if (idx < bytes.length) {
-            histogram[bytes[idx] & 0xFF]++;
-          }
-        }
-      }
-      if (mounted && _histogramStreaming) {
-        setState(() => _histogramData = histogram);
-      }
-    } catch (_) {
-      // Silently ignore errors in histogram processing
-    }
-  }
-
   void _syncHistogramStream() {
-    final showHistogram = _settings.proMode && _settings.histogram;
-    if (showHistogram && _cam != null && !_recording) {
+    final showHistogram = _settings.proMode && _settings.histogram && _proActive;
+    if (showHistogram && !_recording) {
       _startHistogramStream();
     } else if (!showHistogram) {
       _stopHistogramStream();
@@ -910,7 +922,7 @@ class _CameraScreenState extends State<CameraScreen>
         switch (_activeProControl) {
           case ProControlMode.zoom:
             _setZoom(1.0);
-            _showNotification('Zoom reset to 1.0x');
+            _showNotification('Zoom reset to 1.0×');
             break;
           case ProControlMode.exposure:
             _setExposure(0.0);
@@ -938,17 +950,28 @@ class _CameraScreenState extends State<CameraScreen>
             break;
         }
       });
+      // Push all controls to native camera so the reset takes effect immediately
+      // (ISO/shutter/WB/focus resets only update settings — without this push
+      // the camera keeps the old value until the next unrelated control change).
+      if (_proActive) unawaited(_pushProControls());
       try {
         await _cam?.setFocusMode(FocusMode.auto);
       } catch (_) {}
     } else {
-      // Non-Pro mode: reset focus and exposure
+      // Non-Pro mode: reset whichever control is currently active.
+      if (_isZoomMode) {
+        _setZoom(1.0);
+        _showNotification('Zoom reset to 1.0×');
+      } else {
+        try {
+          await _cam?.setExposureOffset(0.0);
+        } catch (_) {}
+        if (mounted) setState(() => _exposure = 0.0.clamp(_minExp, _maxExp).toDouble());
+        _showNotification('Exposure reset');
+      }
       try {
         await _cam?.setFocusMode(FocusMode.auto);
-        await _cam?.setExposureOffset(0.0);
       } catch (_) {}
-      if (mounted) setState(() => _exposure = 0.0.clamp(_minExp, _maxExp).toDouble());
-      _showNotification('Focus & exposure reset');
     }
   }
 
@@ -986,7 +1009,8 @@ class _CameraScreenState extends State<CameraScreen>
     _onUserInteraction();
     _settings.update(() => _settings.whiteBalance = v);
     if (_proActive) _pushProControls();
-    _showNotification('WB ${v.label}');
+    final label = v == ProWhiteBalance.kelvin ? '${_settings.kelvin}K' : v.label;
+    _showNotification('WB $label');
   }
 
   void _setManualFocus(double v) {
@@ -1002,6 +1026,22 @@ class _CameraScreenState extends State<CameraScreen>
     _showNotification('MTR ${v.label}');
   }
 
+  /// Cycles the capture file type (JPEG → RAW → RAW+JPEG). Surfaced on the Pro
+  /// Controls bar for quick access while shooting.
+  void _cycleFileType() {
+    _onUserInteraction();
+    const modes = RawCaptureMode.values;
+    _settings.update(() {
+      _settings.rawCaptureMode =
+          modes[(modes.indexOf(_settings.rawCaptureMode) + 1) % modes.length];
+    });
+    _showNotification(switch (_settings.rawCaptureMode) {
+      RawCaptureMode.jpeg => 'JPEG',
+      RawCaptureMode.raw => 'RAW',
+      RawCaptureMode.rawJpeg => 'RAW + JPEG',
+    });
+  }
+
   // camera2 CONTROL_AWB_MODE constant for a preset.
   int _awbModeFor(ProWhiteBalance w) => switch (w) {
         ProWhiteBalance.auto => 1,
@@ -1010,7 +1050,7 @@ class _CameraScreenState extends State<CameraScreen>
         ProWhiteBalance.daylight => 5,
         ProWhiteBalance.cloudy => 6,
         ProWhiteBalance.shade => 8,
-        ProWhiteBalance.kelvin => 1, // manual kelvin handled separately
+        ProWhiteBalance.kelvin => 0, // AWB_MODE_OFF — gains set via kelvin field
       };
 
   /// Maps the current Dart control state to the native pipeline. Negative
@@ -1029,7 +1069,9 @@ class _CameraScreenState extends State<CameraScreen>
         iso: _settings.proIso ?? -1,
         exposureNs: _settings.proShutterNs ?? -1,
         awbMode: _awbModeFor(_settings.whiteBalance),
-        kelvin: -1,
+        kelvin: _settings.whiteBalance == ProWhiteBalance.kelvin
+            ? _settings.kelvin
+            : -1,
         focusDistance: focus,
         ev: evSteps,
         zoom: _zoom,
@@ -1047,6 +1089,9 @@ class _CameraScreenState extends State<CameraScreen>
     // shutter; the user dials in manual values deliberately from there.
     _settings.proIso = null;
     _settings.proShutterNs = null;
+    // Sync facing with the currently-active Flutter camera so the first flip
+    // goes the correct direction.
+    _proFront = _isFront;
     try {
       if (_histogramStreaming) await _stopHistogramStream();
       await _cam?.dispose();
@@ -1058,6 +1103,7 @@ class _CameraScreenState extends State<CameraScreen>
         _proPreviewH = _proCam.previewHeight;
         _proActive = true;
         await _pushProControls();
+        _syncHistogramStream();
       }
     } catch (_) {
     } finally {
@@ -1116,50 +1162,62 @@ class _CameraScreenState extends State<CameraScreen>
     }
 
     final cam = _cam;
-    String? rawShotPath; // camera JPEG path, retained for saveOriginal
+    String? rawShotPath; // native JPEG path (full-res); null in plugin-path auto mode
 
-    // 1. Hardware capture — ~200-500 ms, unavoidable.
+    // 1. Hardware capture — ~200–500 ms.
     // Pause the histogram stream before taking a picture; CameraX uses separate
     // use cases but the Flutter plugin may not allow concurrent streaming + capture.
     final wasStreaming = _histogramStreaming;
     if (wasStreaming) await _stopHistogramStream();
 
     try {
-      if (cam != null && cam.value.isInitialized) {
+      if (_proActive) {
+        // Native Camera2 full-res capture path.
+        final dir = await getTemporaryDirectory();
+        final rawPath =
+            '${dir.path}/raw_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        if (_settings.hdrMode == HdrMode.multiFrame) {
+          rawShotPath = await _proCam.captureHdr(rawPath);
+        } else {
+          rawShotPath = await _proCam.capture(rawPath);
+        }
+      } else if (cam != null && cam.value.isInitialized) {
         final shot = await cam.takePicture();
         rawShotPath = shot.path;
       }
     } catch (_) {
-      // On error fall through with rawShotPath = null; boundary rasterises
-      // the fallback scene so the stamp is still saved.
+      // On error fall through with rawShotPath = null; the rasterized composite
+      // is still saved so the stamp is preserved.
     }
-    _frozenBg = null; // always use live camera as the freeze background
+    _frozenBg = null;
 
-    // 2. Show the shutter flash; freeze is just a busy-gate (live camera stays on).
+    // 2. Show the shutter flash.
     if (!mounted) return;
     setState(() {
       _showFreeze = true;
       _flash2 = true;
     });
-
-    // One frame so the flash paints.
     await WidgetsBinding.instance.endOfFrame;
     if (mounted) setState(() => _flash2 = false);
 
-    // 3. Start GPU rasterisation of the current composite (stamp over live camera).
+    // 3. Start GPU rasterisation of the composite (stamp over live frame).
+    //    In Pro mode we also grab just the stamp boundary for native compositing.
     final stampRatio = CameraCapabilityService.instance
         .resolutionAt(_settings.captureResolutionIndex)
         .stampPixelRatio;
     final boundary =
         _freezeKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+    final stampBoundary = _proActive
+        ? _stampRasterKey.currentContext?.findRenderObject()
+            as RenderRepaintBoundary?
+        : null;
 
-    // toImage() snapshots the layer tree atomically; the following setState
-    // will not corrupt that snapshot — it just schedules the next frame.
+    // toImage() snapshots the layer tree atomically before the next setState.
     final renderFuture = boundary != null
         ? CaptureService.instance.rasterize(boundary, pixelRatio: stampRatio)
         : Future<Uint8List?>.value(null);
 
-    // 4. Unfreeze the camera immediately so the user can shoot again.
+    // 4. Unfreeze immediately so the user can shoot again.
     if (!mounted) return;
     setState(() {
       _showFreeze = false;
@@ -1167,20 +1225,24 @@ class _CameraScreenState extends State<CameraScreen>
       _frozenBg = null;
     });
 
-    // 5. Finish encoding and saving in the background.
-    final bytes = await renderFuture;
+    // 5. Finish compositing and saving in the background.
+    Uint8List? bytes;
+    if (_proActive && rawShotPath != null && stampBoundary != null) {
+      // Full-res path: composite stamp over the native sensor-resolution JPEG.
+      bytes = await CaptureService.instance.compositeNativeWithStamp(
+        rawShotPath,
+        stampBoundary,
+      );
+    }
+    // Fallback to preview-res rasterized composite (plugin mode, or native failed).
+    bytes ??= await renderFuture;
+
     if (bytes != null) {
       _lastShot = bytes;
       CaptureService.instance.cacheLast(bytes);
       _templates.bumpPhotoNumber();
-      // Gallery first to get the MediaStore URI for the companion .ref file.
-      final galleryRef = await CaptureService.instance.saveImageToGallery(
-        bytes,
-      );
-      await CaptureService.instance.saveLocalCapture(
-        bytes,
-        galleryRef: galleryRef,
-      );
+      final galleryRef = await CaptureService.instance.saveImageToGallery(bytes);
+      await CaptureService.instance.saveLocalCapture(bytes, galleryRef: galleryRef);
       if (_settings.saveOriginal && rawShotPath != null) {
         await CaptureService.instance.saveRawToGallery(rawShotPath);
       }
@@ -1313,6 +1375,8 @@ class _CameraScreenState extends State<CameraScreen>
                   proTextureId: _proActive ? _proTextureId : null,
                   proWidth: _proPreviewW,
                   proHeight: _proPreviewH,
+                  proSensorOrientation: _proCam.sensorOrientation,
+                  proFront: _proFront,
                   frozen: _showFreeze ? _frozenBg : null,
                   grid: _settings.gridLines,
                   gridType: _settings.gridType,
@@ -1328,7 +1392,7 @@ class _CameraScreenState extends State<CameraScreen>
                   // capture always pins it to the bottom of the final image.
                   stampInset: _showFreeze ? 14.0 : stampInset,
                   stamp: ListenableBuilder(
-                    listenable: Listenable.merge([_templates, _settings]),
+                    listenable: Listenable.merge([_templates, _settings, _compassHeading]),
                     builder: (context, _) {
                       return Visibility(
                         visible: _settings.stampEnabled,
@@ -1352,6 +1416,7 @@ class _CameraScreenState extends State<CameraScreen>
                             }
                           },
                           child: RepaintBoundary(
+                            key: _stampRasterKey,
                             child: GeoStamp(
                               geo: _stampGeo,
                               config: _templates.config,
@@ -1444,7 +1509,44 @@ class _CameraScreenState extends State<CameraScreen>
                       canExpose: _maxExp > _minExp,
                       onExposure: _cycleExposure,
                     ),
-                    const Spacer(),
+                    // Notification banner — floats between the two strips.
+                    Expanded(
+                      child: IgnorePointer(
+                        child: Center(
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 250),
+                          transitionBuilder: (child, animation) => FadeTransition(
+                            opacity: animation,
+                            child: ScaleTransition(
+                              scale: Tween<double>(begin: 0.9, end: 1.0).animate(animation),
+                              child: child,
+                            ),
+                          ),
+                          child: _notificationMsg == null
+                              ? const SizedBox.shrink()
+                              : FrostedChip(
+                                  key: ValueKey<String>(_notificationMsg!),
+                                  fill: const Color(0xEB070B14),
+                                  stroke: Palette.glassStrokeSoft,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 9,
+                                  ),
+                                  child: Text(
+                                    _notificationMsg!,
+                                    textAlign: TextAlign.center,
+                                    style: AppText.bodyHi.copyWith(
+                                      color: Palette.textHi,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      letterSpacing: 0.2,
+                                    ),
+                                  ),
+                                ),
+                        ),
+                      ),
+                      ),
+                    ),
                     // App settings (top-right) — collapses while camera settings open.
                     if (!_toolsOpen)
                       AppSettingsStrip(
@@ -1466,33 +1568,32 @@ class _CameraScreenState extends State<CameraScreen>
                 Positioned(
                   left: Insets.md,
                   right: Insets.md,
-                  bottom: controlBottom + 72 + Insets.sm,
-                  child: _ProQuickPanel(
-                    caps: CameraCapabilityService.instance,
-                    settings: _settings,
-                    exposure: _exposure,
-                    zoom: _zoom,
-                    canExpose: _maxExp > _minExp,
-                    activeMode: _activeProControl,
-                    onModeSelected: (mode) {
-                      _onUserInteraction();
-                      setState(() {
-                        _activeProControl = mode;
-                        if (mode != ProControlMode.zoom) {
-                          _lastActiveProControl = mode;
-                        }
-                      });
-                    },
+                  bottom: controlBottom + 88 + Insets.sm,
+                  child: ListenableBuilder(
+                    listenable: _settings,
+                    builder: (context, _) => _ProQuickPanel(
+                      caps: CameraCapabilityService.instance,
+                      settings: _settings,
+                      exposure: _exposure,
+                      canExpose: _maxExp > _minExp,
+                      activeMode: _activeProControl,
+                      onModeSelected: (mode) {
+                        _onUserInteraction();
+                        setState(() => _activeProControl = mode);
+                      },
+                      onFileType: _cycleFileType,
+                    ),
                   ),
                 ),
-              ] else ...[
+              ] else if (!_toolsOpen && !_settingsOpen) ...[
                 // Non-Pro Mode: Zoom / Exposure toggle (right edge)
+                // Hidden while any menu is open to avoid clutter.
                 Positioned(
                   right: Insets.md,
                   top: viewfinderTop,
                   height: boxH,
                   child: Align(
-                    alignment: Alignment.center,
+                    alignment: const Alignment(0, -0.25),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -1547,53 +1648,6 @@ class _CameraScreenState extends State<CameraScreen>
                   ),
                 ),
               ],
-
-              // Notification Banner positioned at the top of the viewfinder
-              Positioned(
-                left: 20,
-                right: 20,
-                top: viewfinderTop + 12,
-                child: IgnorePointer(
-                  child: Center(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 250),
-                      transitionBuilder: (child, animation) {
-                        return FadeTransition(
-                          opacity: animation,
-                          child: ScaleTransition(
-                            scale: Tween<double>(
-                              begin: 0.9,
-                              end: 1.0,
-                            ).animate(animation),
-                            child: child,
-                          ),
-                        );
-                      },
-                      child: _notificationMsg == null
-                          ? const SizedBox.shrink()
-                          : FrostedChip(
-                              key: ValueKey<String>(_notificationMsg!),
-                              fill: const Color(0xEB070B14),
-                              stroke: Palette.glassStrokeSoft,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 9,
-                              ),
-                              child: Text(
-                                _notificationMsg!,
-                                textAlign: TextAlign.center,
-                                style: AppText.bodyHi.copyWith(
-                                  color: Palette.textHi,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  letterSpacing: 0.2,
-                                ),
-                              ),
-                            ),
-                    ),
-                  ),
-                ),
-              ),
 
               // Recording indicator.
               if (_recording)
@@ -1716,6 +1770,24 @@ class _PreviewOverlayState extends State<_PreviewOverlay> {
         _files = files;
         _loading = false;
       });
+      _prefetchNeighbors(_currentPage);
+    }
+  }
+
+  /// Warm the image cache for the pages on either side of [idx] so a swipe
+  /// shows the next photo instantly instead of flashing while it decodes.
+  /// Uses the same downscaled provider as the on-screen [Image.file] so the
+  /// precache and the render share one cache entry.
+  void _prefetchNeighbors(int idx) {
+    if (!mounted || _files.isEmpty) return;
+    final mq = MediaQuery.of(context);
+    final cacheWidth = (mq.size.width * mq.devicePixelRatio).round();
+    for (final i in [idx - 1, idx + 1]) {
+      if (i < 0 || i >= _files.length) continue;
+      precacheImage(
+        ResizeImage(FileImage(_files[i]), width: cacheWidth),
+        context,
+      ).catchError((_) {});
     }
   }
 
@@ -1808,10 +1880,13 @@ class _PreviewOverlayState extends State<_PreviewOverlay> {
                               parent: BouncingScrollPhysics(),
                             ),
                       itemCount: _files.length,
-                      onPageChanged: (idx) => setState(() {
-                        _currentPage = idx;
-                        _zoomed = false;
-                      }),
+                      onPageChanged: (idx) {
+                        setState(() {
+                          _currentPage = idx;
+                          _zoomed = false;
+                        });
+                        _prefetchNeighbors(idx);
+                      },
                       itemBuilder: (context, index) {
                         final file = _files[index];
                         return _ZoomableGalleryPage(
@@ -1919,9 +1994,7 @@ class _ZoomableGalleryPage extends StatefulWidget {
 }
 
 class _ZoomableGalleryPageState extends State<_ZoomableGalleryPage>
-    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
+    with SingleTickerProviderStateMixin {
   static const double _doubleTapScale = 2.6;
   late final TransformationController _transform = TransformationController();
   // Single long-lived controller re-used for every zoom/snap animation.
@@ -2011,9 +2084,13 @@ class _ZoomableGalleryPageState extends State<_ZoomableGalleryPage>
   }
 
   @override
-  @override
   Widget build(BuildContext context) {
-    super.build(context); // required by AutomaticKeepAliveClientMixin
+    // Decode the photo down to the device's pixel width rather than its full
+    // sensor resolution — a multi-MB capture decodes ~8x smaller, keeping the
+    // swipe viewer smooth and memory bounded. Off-screen pages are no longer
+    // kept alive, so their bitmaps are released as you scroll away.
+    final mq = MediaQuery.of(context);
+    final cacheWidth = (mq.size.width * mq.devicePixelRatio).round();
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onDoubleTapDown: (details) => _doubleTapDetails = details,
@@ -2039,6 +2116,7 @@ class _ZoomableGalleryPageState extends State<_ZoomableGalleryPage>
               fit: BoxFit.contain,
               gaplessPlayback: true,
               filterQuality: FilterQuality.medium,
+              cacheWidth: cacheWidth,
             ),
           ),
         ),
@@ -2058,12 +2136,14 @@ class _Viewfinder extends StatelessWidget {
   final int? proTextureId;
   final int proWidth;
   final int proHeight;
+  final int proSensorOrientation;
+  final bool proFront;
   final ImageProvider? frozen;
   final bool grid;
   final GridType gridType;
   final bool mirror;
   final Offset? focus;
-  final double? levelRoll;
+  final ValueListenable<double>? levelRoll;
   final bool histogram;
   final List<int>? histogramData;
   final bool focusPeaking;
@@ -2084,6 +2164,8 @@ class _Viewfinder extends StatelessWidget {
     this.proTextureId,
     this.proWidth = 0,
     this.proHeight = 0,
+    this.proSensorOrientation = 90,
+    this.proFront = false,
     required this.frozen,
     required this.grid,
     required this.gridType,
@@ -2135,6 +2217,8 @@ class _Viewfinder extends StatelessWidget {
                                 proTextureId: proTextureId,
                                 proWidth: proWidth,
                                 proHeight: proHeight,
+                                proSensorOrientation: proSensorOrientation,
+                                proFront: proFront,
                               ),
                       ),
                     ),
@@ -2152,8 +2236,8 @@ class _Viewfinder extends StatelessWidget {
                       ),
                     if (histogram)
                       Positioned(
-                        left: 12,
-                        top: 70,
+                        left: 10,
+                        top: 8,
                         child: IgnorePointer(
                           child: _HistogramOverlay(data: histogramData),
                         ),
@@ -2168,7 +2252,11 @@ class _Viewfinder extends StatelessWidget {
                 ),
               ),
             ),
-            if (levelRoll != null) LevelOverlay(roll: levelRoll!),
+            if (levelRoll != null)
+              ValueListenableBuilder<double>(
+                valueListenable: levelRoll!,
+                builder: (_, roll, _) => LevelOverlay(roll: roll),
+              ),
             if (focus != null) _FocusReticle(at: focus!),
           ],
         ),
@@ -2222,13 +2310,7 @@ class _ControlBar extends StatelessWidget {
             ),
             Expanded(
               child: Center(
-                child: GlassIconButton(
-                  icon: proMode ? Icons.settings : Icons.auto_mode,
-                  active: proMode,
-                  size: 46,
-                  hasBorder: false,
-                  onTap: onProMode,
-                ),
+                child: _ProModeButton(active: proMode, onTap: onProMode),
               ),
             ),
             Expanded(
@@ -2274,60 +2356,71 @@ class _ProQuickPanel extends StatelessWidget {
   final CameraCapabilityService caps;
   final SettingsController settings;
   final double exposure;
-  final double zoom;
   final bool canExpose;
   final ProControlMode activeMode;
   final ValueChanged<ProControlMode> onModeSelected;
+  final VoidCallback onFileType;
 
   const _ProQuickPanel({
     required this.caps,
     required this.settings,
     required this.exposure,
-    required this.zoom,
     required this.canExpose,
     required this.activeMode,
     required this.onModeSelected,
+    required this.onFileType,
   });
 
   @override
   Widget build(BuildContext context) {
     // Each chip is gated on a real, runtime-detected hardware capability — an
-    // unsupported control is hidden entirely rather than shown disabled.
-    final chips = <({String label, String value, ProControlMode mode})>[
-      (label: 'ZOOM', value: '${zoom.toStringAsFixed(1)}x', mode: ProControlMode.zoom),
+    // unsupported control is hidden entirely rather than shown disabled. Mode
+    // chips select the axis adjusted by the viewfinder swipe; toggle chips flip
+    // a setting on tap (File Type / Peaking, kept here for quick shooting access).
+    final chips = <({String label, String value, bool active, VoidCallback onTap})>[
       if (caps.manualSensor && caps.isoValues().isNotEmpty)
-        (label: 'ISO', value: settings.proIso?.toString() ?? 'Auto', mode: ProControlMode.iso),
+        (label: 'ISO', value: settings.proIso?.toString() ?? 'Auto', active: activeMode == ProControlMode.iso, onTap: () => onModeSelected(ProControlMode.iso)),
       if (caps.manualSensor && caps.shutterSpeedsNs().isNotEmpty)
-        (label: 'S', value: settings.proShutterNs == null ? 'Auto' : _formatShutter(settings.proShutterNs!), mode: ProControlMode.shutter),
+        (label: 'S', value: settings.proShutterNs == null ? 'Auto' : _formatShutter(settings.proShutterNs!), active: activeMode == ProControlMode.shutter, onTap: () => onModeSelected(ProControlMode.shutter)),
       if (caps.whiteBalanceModes.isNotEmpty || caps.kelvinWhiteBalance)
-        (label: 'WB', value: settings.whiteBalance.shortLabel, mode: ProControlMode.wb),
+        (
+          label: 'WB',
+          value: settings.whiteBalance == ProWhiteBalance.kelvin
+              ? '${settings.kelvin}K'
+              : settings.whiteBalance.shortLabel,
+          active: activeMode == ProControlMode.wb,
+          onTap: () => onModeSelected(ProControlMode.wb),
+        ),
       if (caps.manualFocus)
-        (label: 'MF', value: settings.manualFocus <= 0 ? 'Auto' : '${(settings.manualFocus * 100).round()}', mode: ProControlMode.focus),
+        (label: 'MF', value: settings.manualFocus <= 0 ? 'Auto' : '${(settings.manualFocus * 100).round()}', active: activeMode == ProControlMode.focus, onTap: () => onModeSelected(ProControlMode.focus)),
       if (canExpose)
-        (label: 'EV', value: '${exposure > 0 ? '+' : ''}${exposure.toStringAsFixed(1)}', mode: ProControlMode.exposure),
-      (label: 'MTR', value: settings.meteringMode.shortLabel, mode: ProControlMode.metering),
+        (label: 'EV', value: '${exposure > 0 ? '+' : ''}${exposure.toStringAsFixed(1)}', active: activeMode == ProControlMode.exposure, onTap: () => onModeSelected(ProControlMode.exposure)),
+      (label: 'MTR', value: settings.meteringMode.shortLabel, active: activeMode == ProControlMode.metering, onTap: () => onModeSelected(ProControlMode.metering)),
+      if (caps.supportsRaw)
+        (
+          label: 'FILE',
+          value: settings.rawCaptureMode == RawCaptureMode.jpeg
+              ? 'JPEG'
+              : (settings.rawCaptureMode == RawCaptureMode.raw ? 'RAW' : 'R+J'),
+          active: settings.rawCaptureMode != RawCaptureMode.jpeg,
+          onTap: onFileType,
+        ),
     ];
     if (chips.isEmpty) return const SizedBox.shrink();
-    // No outer container — a flat, horizontally-scrolling row of tiles that
-    // matches the container-less Camera Settings strip. Active state is shown
-    // by colour only (see [_ProChip]).
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      physics: const BouncingScrollPhysics(),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (var i = 0; i < chips.length; i++) ...[
-            _ProChip(
-              label: chips[i].label,
-              value: chips[i].value,
-              active: chips[i].mode == activeMode,
-              onTap: () => onModeSelected(chips[i].mode),
-            ),
-            if (i < chips.length - 1) const SizedBox(width: 8),
-          ],
-        ],
-      ),
+    // Flat row of tiles, centered. Wrap falls back gracefully if chips overflow.
+    return Wrap(
+      alignment: WrapAlignment.center,
+      spacing: 8,
+      runSpacing: 6,
+      children: [
+        for (final chip in chips)
+          _ProChip(
+            label: chip.label,
+            value: chip.value,
+            active: chip.active,
+            onTap: chip.onTap,
+          ),
+      ],
     );
   }
 }
@@ -2684,6 +2777,49 @@ class _RecPill extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ── Pro mode button ───────────────────────────────────────────────────────────
+
+/// Tappable button that shows the custom camera+aperture icon.
+/// Active state gets the brand gradient pill; inactive is plain.
+class _ProModeButton extends StatelessWidget {
+  final bool active;
+  final VoidCallback? onTap;
+  const _ProModeButton({required this.active, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    const size = 46.0;
+    final icon = SizedBox(
+      width: size,
+      height: size,
+      child: Icon(
+        active ? Icons.tune_rounded : Icons.auto_awesome,
+        size: 22,
+        color: Palette.textHi,
+      ),
+    );
+
+    Widget body;
+    if (active) {
+      body = DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: Palette.selectionGradient,
+          border: Border.all(color: Palette.selectionStroke, width: 1),
+        ),
+        child: icon,
+      );
+    } else {
+      body = icon;
+    }
+
+    return Pressable(
+      onTap: onTap,
+      child: body,
     );
   }
 }

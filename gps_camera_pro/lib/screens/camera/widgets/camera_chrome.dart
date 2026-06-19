@@ -306,7 +306,8 @@ class GalleryThumb extends StatelessWidget {
           color: hasBorder ? Palette.glassFillStrong : Colors.white.withValues(alpha: 0.12),
         ),
         child: thumb != null
-            ? Image.memory(thumb!, fit: BoxFit.cover, gaplessPlayback: true)
+            ? Image.memory(thumb!,
+                fit: BoxFit.cover, gaplessPlayback: true, cacheWidth: 144)
             : const Icon(Icons.photo_library_outlined,
                 size: 20, color: Palette.textMid),
       ),
@@ -458,9 +459,21 @@ class ProControlSelector extends StatelessWidget {
         activeValue = zoom;
         break;
       case ProControlMode.exposure:
-        for (final l in exposureLevels) {
-          items.add((value: l, label: '${l > 0 ? '+' : ''}${l.toStringAsFixed(0)}'));
+        // Use integer EV stops only to avoid duplicate labels from fine hardware
+        // steps (e.g. 1/3-stop increments that all round to the same integer).
+        // Cap at ±3 to keep the vertical list compact within the 180px track.
+        if (exposureLevels.isNotEmpty) {
+          final minStop = exposureLevels.last.ceil().clamp(-3, 0);
+          final maxStop = exposureLevels.first.floor().clamp(0, 3);
+          for (int stop = maxStop; stop >= minStop; stop--) {
+            final target = stop.toDouble();
+            final nearest = exposureLevels.reduce(
+              (a, b) => (a - target).abs() < (b - target).abs() ? a : b,
+            );
+            items.add((value: nearest, label: '${stop > 0 ? '+' : ''}$stop'));
+          }
         }
+        if (items.isEmpty) items.add((value: 0.0, label: '0'));
         activeValue = exposure;
         break;
       case ProControlMode.iso:
@@ -506,19 +519,29 @@ class ProControlSelector extends StatelessWidget {
             : (shutters.indexOf(settings.proShutterNs!) + 1).toDouble();
         break;
       case ProControlMode.wb:
-        final wbOptions = supportedWhiteBalances(caps);
-        final step = (wbOptions.length - 1) / 4;
-        final Set<int> sampledIndices = {};
-        for (int i = 0; i <= 4; i++) {
-          final idx = (i * step).round().clamp(0, wbOptions.length - 1);
-          sampledIndices.add(idx);
+        if (settings.whiteBalance == ProWhiteBalance.kelvin) {
+          // Kelvin temperature scale — 5 sampled stops. No "K" suffix since
+          // the chip label already shows the unit.
+          const kelvinStops = [2500.0, 3500.0, 5000.0, 6500.0, 8000.0];
+          for (final k in kelvinStops) {
+            items.add((value: k, label: '${k.toInt()}'));
+          }
+          activeValue = settings.kelvin.toDouble();
+        } else {
+          final wbOptions = supportedWhiteBalances(caps);
+          final step = (wbOptions.length - 1) / 4;
+          final Set<int> sampledIndices = {};
+          for (int i = 0; i <= 4; i++) {
+            final idx = (i * step).round().clamp(0, wbOptions.length - 1);
+            sampledIndices.add(idx);
+          }
+          final sortedIndices = sampledIndices.toList()..sort();
+          for (final idx in sortedIndices) {
+            final opt = wbOptions[idx];
+            items.add((value: idx.toDouble(), label: opt.shortLabel));
+          }
+          activeValue = wbOptions.indexOf(settings.whiteBalance).toDouble();
         }
-        final sortedIndices = sampledIndices.toList()..sort();
-        for (final idx in sortedIndices) {
-          final opt = wbOptions[idx];
-          items.add((value: idx.toDouble(), label: opt.shortLabel));
-        }
-        activeValue = wbOptions.indexOf(settings.whiteBalance).toDouble();
         break;
       case ProControlMode.focus:
         items.addAll([
@@ -605,8 +628,13 @@ class ProControlSelector extends StatelessWidget {
                       onShutterChanged(idx == 0 ? null : shutters[idx - 1]);
                       break;
                     case ProControlMode.wb:
-                      final wbOptions = supportedWhiteBalances(caps);
-                      onWbChanged(wbOptions[item.value.round()]);
+                      if (settings.whiteBalance == ProWhiteBalance.kelvin) {
+                        settings.update(() => settings.kelvin = item.value.round());
+                        onWbChanged(ProWhiteBalance.kelvin);
+                      } else {
+                        final wbOptions = supportedWhiteBalances(caps);
+                        onWbChanged(wbOptions[item.value.round()]);
+                      }
                       break;
                     case ProControlMode.focus:
                       onFocusChanged(item.value);
@@ -764,11 +792,19 @@ class _ProControlBarState extends State<ProControlBar> {
             : shutters.indexOf(widget.settings.proShutterNs!) + 1;
         break;
       case ProControlMode.wb:
-        final wbOptions = supportedWhiteBalances(widget.caps);
-        for (int i = 0; i < wbOptions.length; i++) {
-          items.add((value: i.toDouble(), label: wbOptions[i].shortLabel));
+        if (widget.settings.whiteBalance == ProWhiteBalance.kelvin) {
+          // Mode label shows "K"; items show just the number to avoid duplication.
+          for (int k = 2500; k <= 8000; k += 500) {
+            items.add((value: k.toDouble(), label: '$k'));
+          }
+          activeIndex = _nearest(items, widget.settings.kelvin.toDouble());
+        } else {
+          final wbOptions = supportedWhiteBalances(widget.caps);
+          for (int i = 0; i < wbOptions.length; i++) {
+            items.add((value: i.toDouble(), label: wbOptions[i].shortLabel));
+          }
+          activeIndex = wbOptions.indexOf(widget.settings.whiteBalance);
         }
-        activeIndex = wbOptions.indexOf(widget.settings.whiteBalance);
         break;
       case ProControlMode.focus:
         // Label steps with real distances derived from the hardware's minimum
@@ -832,8 +868,13 @@ class _ProControlBarState extends State<ProControlBar> {
         widget.onShutterChanged(value < 0 ? null : value.round());
         break;
       case ProControlMode.wb:
-        final wbOptions = supportedWhiteBalances(widget.caps);
-        widget.onWbChanged(wbOptions[value.round()]);
+        if (widget.settings.whiteBalance == ProWhiteBalance.kelvin) {
+          widget.settings.update(() => widget.settings.kelvin = value.round());
+          widget.onWbChanged(ProWhiteBalance.kelvin);
+        } else {
+          final wbOptions = supportedWhiteBalances(widget.caps);
+          widget.onWbChanged(wbOptions[value.round()]);
+        }
         break;
       case ProControlMode.focus:
         widget.onFocusChanged(value);
@@ -958,6 +999,10 @@ class _ProControlBarState extends State<ProControlBar> {
   }
 
   String _getModeLabel(ProControlMode mode) {
+    if (mode == ProControlMode.wb &&
+        widget.settings.whiteBalance == ProWhiteBalance.kelvin) {
+      return 'K';
+    }
     return switch (mode) {
       ProControlMode.zoom => 'ZOOM',
       ProControlMode.exposure => 'EXPO',

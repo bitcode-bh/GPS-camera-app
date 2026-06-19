@@ -1,4 +1,3 @@
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/design/palette.dart';
@@ -12,7 +11,6 @@ import '../../models/coordinates.dart';
 import '../../models/geo_data.dart';
 import '../../models/map_kind.dart';
 import '../../models/template.dart';
-import '../../services/camera_capability_service.dart';
 import '../../state/settings_controller.dart';
 import '../../state/template_controller.dart';
 import '../templates/custom_template_editor.dart';
@@ -245,12 +243,14 @@ class _SettingsPopup extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    PanelHeader(
-                      icon: cat.icon,
-                      title: cat.label,
-                      onClose: () => Navigator.of(context).pop(),
-                    ),
-                    const SizedBox(height: Insets.sm),
+                    if (cat != SettingsCat.stamp) ...[
+                      PanelHeader(
+                        icon: cat.icon,
+                        title: cat.label,
+                        onClose: () => Navigator.of(context).pop(),
+                      ),
+                      const SizedBox(height: Insets.sm),
+                    ],
                     Flexible(
                       child: SingleChildScrollView(
                         child: Column(
@@ -275,6 +275,29 @@ class _SettingsPopup extends StatelessWidget {
     switch (cat) {
       case SettingsCat.stamp:
         return [
+          // Toggle at the top
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: Insets.sm),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    'Show stamp',
+                    style: AppText.bodyHi,
+                  ),
+                ),
+                const SizedBox(width: Insets.sm),
+                CycleTile(
+                  icon: Icons.visibility_outlined,
+                  label: s.stampEnabled ? 'On' : 'Off',
+                  active: true,
+                  onTap: () => s.update(() => s.stampEnabled = !s.stampEnabled),
+                ),
+              ],
+            ),
+          ),
+          _div(),
           _NavTile(
             icon: Icons.dashboard_customize_outlined,
             title: 'Template',
@@ -296,32 +319,10 @@ class _SettingsPopup extends StatelessWidget {
             },
           ),
           _div(),
-          _StampOpacitySlider(
+          _OpacityBar(
             value: t.config.stampOpacity,
             onChanged: (v) => t.setStampOpacity(v, persist: false),
             onChangeEnd: (v) => t.setStampOpacity(v),
-          ),
-          _div(),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: Insets.sm),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    'Show stamp',
-                    style: AppText.bodyHi,
-                  ),
-                ),
-                const SizedBox(width: Insets.sm),
-                CycleTile(
-                  icon: Icons.visibility_outlined,
-                  label: s.stampEnabled ? 'On' : 'Off',
-                  active: true,
-                  onTap: () => s.update(() => s.stampEnabled = !s.stampEnabled),
-                ),
-              ],
-            ),
           ),
         ];
       case SettingsCat.display:
@@ -419,43 +420,6 @@ class _SettingsPopup extends StatelessWidget {
       Divider(color: Palette.glassStrokeSoft, height: 1, thickness: 0.6);
 }
 
-extension on RawCaptureMode {
-  String get label => switch (this) {
-        RawCaptureMode.jpeg => 'JPEG',
-        RawCaptureMode.raw => 'RAW',
-        RawCaptureMode.rawJpeg => 'RAW+JPEG',
-      };
-}
-
-extension on HdrMode {
-  String get label => switch (this) {
-        HdrMode.auto => 'Auto',
-        HdrMode.on => 'On',
-        HdrMode.off => 'Off',
-      };
-}
-
-extension on NightMode {
-  String get label => switch (this) {
-        NightMode.off => 'Off',
-        NightMode.on => 'On',
-      };
-}
-
-extension on GridType {
-  String get label => switch (this) {
-        GridType.thirds => 'Thirds',
-        GridType.square => 'Square',
-        GridType.golden => 'Golden',
-      };
-}
-
-String _formatShutter(int ns) {
-  final seconds = ns / 1000000000.0;
-  if (seconds >= 1) return '${seconds.round()}s';
-  return '1/${(1 / seconds).round()}';
-}
-
 // ── Standardized controls (shared, uniform sizing) ───────────────────────────
 
 /// One labelled setting: a small uppercase field label above a full-width
@@ -501,40 +465,38 @@ class _SettingRow<T> extends StatelessWidget {
 }
 
 /// Horizontal slider for overall geostamp opacity with a live percentage readout.
-class _StampOpacitySlider extends StatefulWidget {
+class _OpacityBar extends StatefulWidget {
   final double value;
   final ValueChanged<double> onChanged;
   final ValueChanged<double> onChangeEnd;
 
-  const _StampOpacitySlider({
+  const _OpacityBar({
     required this.value,
     required this.onChanged,
     required this.onChangeEnd,
   });
 
   @override
-  State<_StampOpacitySlider> createState() => _StampOpacitySliderState();
+  State<_OpacityBar> createState() => _OpacityBarState();
 }
 
-class _StampOpacitySliderState extends State<_StampOpacitySlider> {
-  late double _currentValue;
+class _OpacityBarState extends State<_OpacityBar> {
+  late double _current;
 
   @override
   void initState() {
     super.initState();
-    _currentValue = widget.value;
+    _current = widget.value;
   }
 
   @override
-  void didUpdateWidget(covariant _StampOpacitySlider oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    _currentValue = widget.value;
+  void didUpdateWidget(covariant _OpacityBar old) {
+    super.didUpdateWidget(old);
+    _current = widget.value;
   }
 
   @override
   Widget build(BuildContext context) {
-    final pct = (_currentValue.clamp(-1.0, 1.0) * 100).round();
-    final pctString = pct > 0 ? '+$pct%' : '$pct%';
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: Insets.sm),
       child: Column(
@@ -542,23 +504,9 @@ class _StampOpacitySliderState extends State<_StampOpacitySlider> {
         children: [
           Padding(
             padding: const EdgeInsets.only(left: 2, bottom: Insets.xs),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'STAMP OPACITY',
-                    style: AppText.caption.copyWith(color: Palette.textMid),
-                  ),
-                ),
-                Text(
-                  pctString,
-                  style: AppText.mono.copyWith(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Palette.textHi,
-                  ),
-                ),
-              ],
+            child: Text(
+              'OPACITY',
+              style: AppText.caption.copyWith(color: Palette.textMid),
             ),
           ),
           SliderTheme(
@@ -572,12 +520,12 @@ class _StampOpacitySliderState extends State<_StampOpacitySlider> {
               overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
             ),
             child: Slider(
-              value: _currentValue.clamp(-1.0, 1.0),
+              value: _current.clamp(-1.0, 1.0),
               min: -1.0,
               max: 1.0,
-              divisions: 40,
+              divisions: 20,
               onChanged: (v) {
-                setState(() => _currentValue = v);
+                setState(() => _current = v);
                 widget.onChanged(v);
               },
               onChangeEnd: widget.onChangeEnd,
@@ -617,79 +565,6 @@ class _NavTile extends StatelessWidget {
             const Icon(Icons.chevron_right, size: 18, color: Palette.textMid),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _SwitchRow extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  const _SwitchRow({
-    required this.icon,
-    required this.title,
-    required this.value,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Pressable(
-      onTap: () => onChanged(!value),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: value ? Palette.accentMuted : Palette.textMid),
-            const SizedBox(width: 14),
-            Expanded(child: Text(title, style: AppText.bodyHi)),
-            Switch.adaptive(
-              value: value,
-              activeThumbColor: Palette.accentMuted,
-              activeTrackColor: Palette.accentMuted.withValues(alpha: 0.4),
-              onChanged: onChanged,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _InfoRow extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String value;
-
-  const _InfoRow({
-    required this.icon,
-    required this.title,
-    required this.value,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 11),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 20, color: Palette.accentMuted),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: AppText.bodyHi),
-                const SizedBox(height: 3),
-                Text(value, style: AppText.caption.copyWith(color: Palette.textMid)),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

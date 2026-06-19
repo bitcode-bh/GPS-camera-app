@@ -51,8 +51,8 @@ class GeoStamp extends StatelessWidget {
   Widget build(BuildContext context) {
     final mapWidget = config.showsMap
         ? SizedBox(
-            width: 112 * _s,
-            height: 96 * _s,
+            width: 136 * _s,
+            height: 118 * _s,
             child: MiniMap(
               lat: geo.lat,
               lon: geo.lon,
@@ -60,7 +60,7 @@ class GeoStamp extends StatelessWidget {
               kind: settings.mapKind,
               zoom: settings.mapZoom,
               accent: _accent,
-              radius: Corners.sm,
+              radius: Corners.xs,
               compact: preview,
               realMap: realMap,
             ),
@@ -72,9 +72,9 @@ class GeoStamp extends StatelessWidget {
         ? GestureDetector(
             behavior: HitTestBehavior.opaque,
             onDoubleTap: onMapDoubleTap,
-            onHorizontalDragStart: (_) {},
-            onHorizontalDragUpdate: (_) {},
-            onHorizontalDragEnd: (_) {},
+            // No horizontal-drag handlers here: a horizontal swipe on the map
+            // must fall through to the parent stamp's pan handler, which toggles
+            // the map side (left ↔ right). Vertical drag still cycles map style.
             onVerticalDragStart: (_) {
               mapDragDy = 0;
             },
@@ -137,53 +137,38 @@ class GeoStamp extends StatelessWidget {
         : 0.85 + (config.stampOpacity * 0.15);
     final clampedOpacity = bgOpacity.clamp(0.0, 1.0);
     final bgFill = Colors.black.withValues(alpha: clampedOpacity);
-    final borderStroke = Palette.glassStrokeSoft.withValues(alpha: clampedOpacity);
     final blurSigma = clampedOpacity * Blurs.panel;
 
     final Widget surface;
     if (preview) {
-      // Cheaper surface for gallery thumbnails (no backdrop blur).
-      // Use Stack to keep background opacity separate from content opacity
       surface = ClipRRect(
-        borderRadius: BorderRadius.circular(Corners.md),
+        borderRadius: BorderRadius.circular(Corners.xs),
         child: Stack(
           children: [
-            // Opaque background layer — Positioned.fill so it matches the
-            // content's size instead of forcing the Stack to be infinite.
             Positioned.fill(
               child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: bgFill,
-                  border: Border.all(color: borderStroke),
-                ),
+                decoration: BoxDecoration(color: bgFill),
               ),
             ),
-            // Content layer (not affected by background opacity) — this is the
-            // only non-positioned child, so it drives the Stack's size.
             content,
           ],
         ),
       );
     } else {
-      // Use Stack to separate background opacity from content opacity
       surface = ClipRRect(
-        borderRadius: BorderRadius.circular(Corners.lg),
+        borderRadius: BorderRadius.circular(Corners.sm),
         child: Stack(
           children: [
-            // Opaque background layer with glass effect — Positioned.fill so it
-            // matches the content's size instead of forcing infinite height.
             Positioned.fill(
               child: GlassSurface(
-                radius: Corners.lg,
+                radius: Corners.sm,
                 blur: blurSigma,
                 fill: bgFill,
-                stroke: borderStroke,
+                stroke: Colors.transparent,
                 padding: EdgeInsets.zero,
                 child: const SizedBox.shrink(),
               ),
             ),
-            // Content layer (not affected by background opacity) — the only
-            // non-positioned child, so it drives the Stack's size.
             content,
           ],
         ),

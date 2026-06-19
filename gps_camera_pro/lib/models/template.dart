@@ -6,7 +6,7 @@ import '../core/design/palette.dart';
 
 /// Predefined geostamp styles shown in the template gallery (mirrors the
 /// reference app's template set).
-enum StampTemplate { advance, classic, dateTime, scanLocation, reporting, navigationCompass }
+enum StampTemplate { advance, classic, dateTime, scanLocation, reporting, navigationCompass, weather, minimal, survey }
 
 extension StampTemplateX on StampTemplate {
   String get title => switch (this) {
@@ -16,6 +16,9 @@ extension StampTemplateX on StampTemplate {
         StampTemplate.scanLocation => 'Scan Location',
         StampTemplate.reporting => 'Reporting',
         StampTemplate.navigationCompass => 'Navigation',
+        StampTemplate.weather => 'Weather',
+        StampTemplate.minimal => 'Minimal',
+        StampTemplate.survey => 'Survey',
       };
 
   String get blurb => switch (this) {
@@ -25,9 +28,12 @@ extension StampTemplateX on StampTemplate {
         StampTemplate.scanLocation => 'Address with a scannable Plus Code',
         StampTemplate.reporting => 'Project header, note & contact details',
         StampTemplate.navigationCompass => 'Compass, heading, altitude & field',
+        StampTemplate.weather => 'Temperature, humidity, pressure & wind',
+        StampTemplate.minimal => 'Coordinates and time only — clean & compact',
+        StampTemplate.survey => 'Numbering, address, lat/long & altitude',
       };
 
-  bool get isNew => this == StampTemplate.scanLocation;
+  bool get isNew => this == StampTemplate.weather || this == StampTemplate.survey;
 }
 
 /// Every toggleable line that can appear on a custom stamp.
@@ -211,6 +217,19 @@ class TemplateConfig {
         return {
           StampField.mapType, StampField.shortAddress, StampField.latLong,
           StampField.compass, StampField.altitude, StampField.magneticField,
+          StampField.dateTime,
+        };
+      case StampTemplate.weather:
+        return {
+          StampField.shortAddress, StampField.temperature, StampField.humidity,
+          StampField.pressure, StampField.wind, StampField.dateTime,
+        };
+      case StampTemplate.minimal:
+        return {StampField.latLong, StampField.dateTime};
+      case StampTemplate.survey:
+        return {
+          StampField.numbering, StampField.mapType, StampField.fullAddress,
+          StampField.latLong, StampField.altitude, StampField.accuracy,
           StampField.dateTime,
         };
     }

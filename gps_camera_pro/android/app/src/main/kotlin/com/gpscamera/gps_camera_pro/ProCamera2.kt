@@ -1,6 +1,8 @@
 package com.gpscamera.gps_camera_pro
 
 import android.content.Context
+import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.graphics.ImageFormat
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraAccessException
@@ -25,6 +27,7 @@ import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.view.TextureRegistry
+import java.io.ByteArrayOutputStream
 import java.io.FileOutputStream
 import kotlin.math.abs
 
@@ -55,6 +58,8 @@ class ProCamera2(
     private var surfaceProducer: TextureRegistry.SurfaceProducer? = null
     private var previewSurface: Surface? = null
     private var imageReader: ImageReader? = null
+    private var yuvReader: ImageReader? = null
+    private var histFrameCount = 0
     private var requestBuilder: CaptureRequest.Builder? = null
 
     private var cameraId: String? = null
@@ -92,6 +97,7 @@ class ProCamera2(
             "open" -> open(call, result)
             "setControls" -> { setControls(call); result.success(true) }
             "capture" -> capture(call, result)
+            "captureHdr" -> captureHdr(call, result)
             "close" -> { close(); result.success(true) }
             else -> result.notImplemented()
         }
@@ -168,6 +174,32 @@ class ProCamera2(
                 ?: previewSize
             imageReader = ImageReader.newInstance(jpegSize.width, jpegSize.height, ImageFormat.JPEG, 2)
 
+            // Small YUV reader for histogram — pick the smallest supported size.
+            val yuvSize = map?.getOutputSizes(ImageFormat.YUV_420_888)
+                ?.minByOrNull { it.width * it.height }
+                ?: Size(320, 240)
+            yuvReader = ImageReader.newInstance(yuvSize.width, yuvSize.height, ImageFormat.YUV_420_888, 2)
+            yuvReader!!.setOnImageAvailableListener({ reader ->
+                val img = reader.acquireLatestImage() ?: return@setOnImageAvailableListener
+                try {
+                    histFrameCount++
+                    if (histFrameCount % 8 != 0) return@setOnImageAvailableListener
+                    val plane = img.planes[0]
+                    val buf = plane.buffer
+                    val bytes = ByteArray(buf.remaining())
+                    buf.get(bytes)
+                    val hist = IntArray(256)
+                    var i = 0
+                    while (i < bytes.size) {
+                        hist[bytes[i].toInt() and 0xFF]++
+                        i += 4
+                    }
+                    emit("histogram", mapOf("data" to hist.toList()))
+                } finally {
+                    img.close()
+                }
+            }, bgHandler)
+
             manager.openCamera(cameraId!!, object : CameraDevice.StateCallback() {
                 override fun onOpened(camera: CameraDevice) {
                     Log.i(TAG, "camera onOpened")
@@ -187,6 +219,8 @@ class ProCamera2(
                     "textureId" to producer.id(),
                     "previewWidth" to previewSize.width,
                     "previewHeight" to previewSize.height,
+                    "sensorOrientation" to sensorOrientation(),
+                    "front" to front,
                 )
             )
         } catch (e: CameraAccessException) {
@@ -207,13 +241,14 @@ class ProCamera2(
             }
             previewSurface = preview
             val reader = imageReader ?: return
-            val targets = listOf(preview, reader.surface)
+            val targets = listOfNotNull(preview, reader.surface, yuvReader?.surface)
             @Suppress("DEPRECATION")
             dev.createCaptureSession(targets, object : CameraCaptureSession.StateCallback() {
                 override fun onConfigured(s: CameraCaptureSession) {
                     session = s
                     val b = dev.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
                     b.addTarget(preview)
+                    yuvReader?.surface?.let { b.addTarget(it) }
                     requestBuilder = b
                     applyControlsToBuilder(b)
                     startRepeating()
@@ -304,7 +339,12 @@ class ProCamera2(
             awbMode != null && awbMode != CameraMetadata.CONTROL_AWB_MODE_AUTO -> {
                 b.set(CaptureRequest.CONTROL_AWB_MODE, awbMode!!)
             }
-            else -> b.set(CaptureRequest.CONTROL_AWB_MODE, CameraMetadata.CONTROL_AWB_MODE_AUTO)
+            else -> {
+                b.set(CaptureRequest.CONTROL_AWB_MODE, CameraMetadata.CONTROL_AWB_MODE_AUTO)
+                // Reset color-correction mode so the AWB algorithm is not
+                // blocked by a TRANSFORM_MATRIX left over from kelvin mode.
+                b.set(CaptureRequest.COLOR_CORRECTION_MODE, CameraMetadata.COLOR_CORRECTION_MODE_FAST)
+            }
         }
 
         // Manual focus distance (diopters) or continuous AF.
@@ -390,15 +430,107 @@ class ProCamera2(
         }
     }
 
+    /** Bracket-captures 3 frames at −2/0/+2 EV and tone-maps them into an HDR JPEG. */
+    private fun captureHdr(call: MethodCall, result: MethodChannel.Result) {
+        val dev = device ?: run { result.error("not_ready", "not open", null); return }
+        val s = session ?: run { result.error("not_ready", "no session", null); return }
+        val reader = imageReader ?: run { result.error("not_ready", "no reader", null); return }
+        val path = call.argument<String>("path") ?: run { result.error("args", "path required", null); return }
+
+        val captured = mutableListOf<ByteArray>()
+        var done = false
+        reader.setOnImageAvailableListener({ r ->
+            val img = r.acquireLatestImage() ?: return@setOnImageAvailableListener
+            try {
+                val buf = img.planes[0].buffer
+                val bytes = ByteArray(buf.remaining()).also { buf.get(it) }
+                synchronized(captured) { captured.add(bytes) }
+            } finally {
+                img.close()
+            }
+            if (captured.size >= 3 && !done) {
+                done = true
+                bgHandler?.post {
+                    try {
+                        val merged = mergeHdr(captured)
+                        FileOutputStream(path).use { it.write(merged) }
+                        Handler(context.mainLooper).post { result.success(path) }
+                    } catch (e: Exception) {
+                        Handler(context.mainLooper).post { result.error("merge_failed", e.message, null) }
+                    }
+                }
+            }
+        }, bgHandler)
+
+        try {
+            // Bracket: vary shutter in manual mode, or EV comp in auto mode.
+            val evOffsets = listOf(-2, 0, 2)
+            val requests = evOffsets.map { ev ->
+                val b = dev.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE)
+                b.addTarget(reader.surface)
+                applyControlsToBuilder(b)
+                if (manualIso != null || manualExposureNs != null) {
+                    val baseExp = manualExposureNs ?: 16_666_666L
+                    val factor = when (ev) { -2 -> 0.25f; 0 -> 1f; else -> 4f }
+                    val varied = (baseExp * factor).toLong()
+                    val expRange = chars?.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)
+                    b.set(CaptureRequest.SENSOR_EXPOSURE_TIME, expRange?.let { varied.coerceIn(it.lower, it.upper) } ?: varied)
+                } else {
+                    b.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
+                    b.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, ev)
+                }
+                b.set(CaptureRequest.JPEG_ORIENTATION, sensorOrientation())
+                b.build()
+            }
+            s.captureBurst(requests, null, bgHandler)
+        } catch (e: Exception) {
+            result.error("capture_exception", e.message, null)
+        }
+    }
+
+    /** Mertens-style exposure-fusion merge: weight each pixel by well-exposedness. */
+    private fun mergeHdr(jpegs: List<ByteArray>): ByteArray {
+        val bitmaps = jpegs.map { BitmapFactory.decodeByteArray(it, 0, it.size) }
+        val w = bitmaps[0].width; val h = bitmaps[0].height
+        val allPx = bitmaps.map { bmp ->
+            IntArray(w * h).also { arr -> bmp.getPixels(arr, 0, w, 0, 0, w, h) }
+        }
+        bitmaps.forEach { it.recycle() }
+        val result = IntArray(w * h)
+        for (i in 0 until w * h) {
+            var rS = 0f; var gS = 0f; var bS = 0f; var wS = 0f
+            for (px in allPx.map { it[i] }) {
+                val r = Color.red(px) / 255f
+                val g = Color.green(px) / 255f
+                val b = Color.blue(px) / 255f
+                val lum = 0.2126f * r + 0.7152f * g + 0.0722f * b
+                val w = lum * (1f - lum) + 1e-6f
+                rS += r * w; gS += g * w; bS += b * w; wS += w
+            }
+            result[i] = Color.rgb((rS / wS * 255).toInt().coerceIn(0, 255),
+                                   (gS / wS * 255).toInt().coerceIn(0, 255),
+                                   (bS / wS * 255).toInt().coerceIn(0, 255))
+        }
+        val out = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+        out.setPixels(result, 0, w, 0, 0, w, h)
+        val stream = ByteArrayOutputStream()
+        out.compress(android.graphics.Bitmap.CompressFormat.JPEG, 95, stream)
+        out.recycle()
+        return stream.toByteArray()
+    }
+
     private fun sensorOrientation(): Int =
         chars?.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 90
 
     fun close() {
+        // Stop the repeating request cleanly to avoid camera device error=3 (EVICTED).
+        try { session?.stopRepeating() } catch (_: Exception) {}
         try { session?.close() } catch (_: Exception) {}
         try { device?.close() } catch (_: Exception) {}
         try { imageReader?.close() } catch (_: Exception) {}
+        try { yuvReader?.close() } catch (_: Exception) {}
         try { surfaceProducer?.release() } catch (_: Exception) {}
-        session = null; device = null; imageReader = null
+        session = null; device = null; imageReader = null; yuvReader = null
         previewSurface = null; surfaceProducer = null; requestBuilder = null
         stopBg()
         emit("closed")

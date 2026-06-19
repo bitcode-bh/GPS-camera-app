@@ -3,4 +3,5 @@
     <!-- App ink (matches Palette.ink) — used for the launch window so there is
          no white/wallpaper flash before Flutter draws its first frame. -->
     <color name="launch_bg">#FF05070D</color>
+	<color name="ic_launcher_background">#0B0F1A</color>
 </resources>

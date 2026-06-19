@@ -57,7 +57,7 @@ class MiniMap extends StatelessWidget {
         child: DecoratedBox(
           decoration: BoxDecoration(
             borderRadius: br,
-            border: Border.all(color: Palette.glassStroke),
+            border: Border.all(color: Palette.glassStrokeSoft, width: 0.6),
           ),
           child: Stack(
             fit: StackFit.expand,
@@ -533,7 +533,7 @@ class _MapZoomPopupState extends State<_MapZoomPopup> {
                             decoration: BoxDecoration(
                               color: const Color(0x99070B14),
                               borderRadius: BorderRadius.circular(Corners.sm),
-                              border: Border.all(color: Palette.glassStroke),
+                              border: Border.all(color: Palette.glassStrokeSoft, width: 0.6),
                             ),
                             child: Text(
                               'Double-tap to reset',

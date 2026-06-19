@@ -24,13 +24,13 @@ class Corners {
   static const double pill = 999;
 }
 
-/// Backdrop blur strengths. Kept low-ish — heavy sigma is expensive and only a
-/// few real-blur surfaces exist at once for performance.
+/// Backdrop blur strengths. Sigma drives GPU cost linearly — these are tuned
+/// to the minimum that still reads as glass on the live camera preview.
 class Blurs {
   Blurs._();
-  static const double chip = 8;
-  static const double panel = 18;
-  static const double sheet = 26;
+  static const double chip = 6;
+  static const double panel = 12;
+  static const double sheet = 18;
 }
 
 /// Motion language — one emphasised easing curve and a small set of durations so
@@ -43,8 +43,8 @@ class Motion {
   static const Curve standard = Cubic(0.4, 0.0, 0.2, 1.0);
   static const Curve spring = Cubic(0.34, 1.3, 0.64, 1.0); // gentle overshoot
 
-  static const Duration fast = Duration(milliseconds: 160);
-  static const Duration normal = Duration(milliseconds: 260);
-  static const Duration slow = Duration(milliseconds: 420);
-  static const Duration page = Duration(milliseconds: 380);
+  static const Duration fast = Duration(milliseconds: 140);
+  static const Duration normal = Duration(milliseconds: 220);
+  static const Duration slow = Duration(milliseconds: 350);
+  static const Duration page = Duration(milliseconds: 320);
 }

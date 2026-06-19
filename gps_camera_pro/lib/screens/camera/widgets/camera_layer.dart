@@ -15,28 +15,44 @@ class CameraLayer extends StatelessWidget {
   final int? proTextureId;
   final int proWidth;
   final int proHeight;
+  final int proSensorOrientation;
+  final bool proFront;
   const CameraLayer({
     super.key,
     this.controller,
     this.proTextureId,
     this.proWidth = 0,
     this.proHeight = 0,
+    this.proSensorOrientation = 90,
+    this.proFront = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Native manual-sensor preview (Camera2 → Flutter texture).
+    // Native manual-sensor preview (Camera2 → Flutter texture). The camera
+    // buffer is in sensor orientation (landscape); rotate it upright for the
+    // portrait viewport. The texture path renders horizontally mirrored, so the
+    // back camera is flipped to show true left/right motion, while the front
+    // camera keeps the inherent mirror (the expected selfie view).
     if (proTextureId != null && proWidth > 0 && proHeight > 0) {
-      return ClipRect(
-        child: FittedBox(
-          fit: BoxFit.cover,
-          child: SizedBox(
-            // Native buffer is landscape; swap for the portrait viewport.
-            width: proHeight.toDouble(),
-            height: proWidth.toDouble(),
-            child: Texture(textureId: proTextureId!),
-          ),
+      final turns = (proSensorOrientation ~/ 90) % 4;
+      Widget content = RotatedBox(
+        quarterTurns: turns,
+        child: SizedBox(
+          width: proWidth.toDouble(),
+          height: proHeight.toDouble(),
+          child: Texture(textureId: proTextureId!),
         ),
+      );
+      if (!proFront) {
+        content = Transform(
+          alignment: Alignment.center,
+          transform: Matrix4.diagonal3Values(-1.0, 1.0, 1.0),
+          child: content,
+        );
+      }
+      return ClipRect(
+        child: FittedBox(fit: BoxFit.cover, child: content),
       );
     }
 

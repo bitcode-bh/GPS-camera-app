@@ -309,14 +309,20 @@ class _CameraToolStripState extends State<CameraToolStrip> {
             final t = _tools();
             final rowCount = (t.length > 10) ? 3 : 2;
             final perRow = (t.length / rowCount).ceil();
-            
+
+            // Slice into fixed-width rows and pad the final row with empty
+            // slots so every column lines up on the same grid — keeping icon
+            // spacing, sizing and positioning uniform across the whole menu.
             final rows = <List<Widget>>[];
             for (int i = 0; i < rowCount; i++) {
               final start = i * perRow;
-              if (start < t.length) {
-                final end = (start + perRow).clamp(0, t.length);
-                rows.add(t.sublist(start, end));
+              if (start >= t.length) break;
+              final end = (start + perRow).clamp(0, t.length);
+              final row = t.sublist(start, end);
+              while (row.length < perRow) {
+                row.add(const SizedBox.shrink());
               }
+              rows.add(row);
             }
 
             return Column(
@@ -348,7 +354,7 @@ class _CameraToolStripState extends State<CameraToolStrip> {
     final f = _flashInfo;
     return <Widget>[
       _ToolTile(
-        icon: _s.proMode ? Icons.tune : Icons.auto_awesome,
+        icon: _s.proMode ? Icons.tune_rounded : Icons.auto_awesome,
         label: _s.proMode ? 'Pro' : 'Auto',
         active: _s.proMode,
         onTap: () => _s.update(() => _s.proMode = !_s.proMode),
@@ -381,20 +387,6 @@ class _CameraToolStripState extends State<CameraToolStrip> {
           active: _s.nightMode == NightMode.on,
           onTap: () => _s.update(() {
             _s.nightMode = _s.nightMode == NightMode.on ? NightMode.off : NightMode.on;
-          }),
-        ),
-      if (CameraCapabilityService.instance.supportsRaw)
-        _ToolTile(
-          icon: _s.rawCaptureMode == RawCaptureMode.jpeg
-              ? Icons.image_outlined
-              : Icons.raw_on,
-          label: _s.rawCaptureMode == RawCaptureMode.jpeg
-              ? 'JPEG'
-              : (_s.rawCaptureMode == RawCaptureMode.raw ? 'RAW' : 'R+J'),
-          active: _s.rawCaptureMode != RawCaptureMode.jpeg,
-          onTap: () => _s.update(() {
-            const modes = RawCaptureMode.values;
-            _s.rawCaptureMode = modes[(modes.indexOf(_s.rawCaptureMode) + 1) % modes.length];
           }),
         ),
       _ToolTile(
@@ -538,10 +530,10 @@ class _ToolTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return Pressable(
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+      child: SizedBox(
+        height: 60,
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, size: 21, color: active ? Palette.accentMuted : Palette.textMid),
             const SizedBox(height: 5),
