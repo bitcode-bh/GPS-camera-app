@@ -48,6 +48,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Installs beside the Play build, which is signed with a different key.
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             // Production signing from key.properties; falls back to debug keys
             // when the keystore isn't present (e.g. a fresh clone/CI without it).
@@ -79,6 +84,6 @@ flutter {
 
 dependencies {
     implementation("androidx.camera:camera-camera2:1.6.0")
-    implementation("androidx.media3:media3-transformer:1.9.0")
-    implementation("androidx.media3:media3-effect:1.9.0")
+    implementation("androidx.media3:media3-transformer:1.9.2")
+    implementation("androidx.media3:media3-effect:1.9.2")
 }

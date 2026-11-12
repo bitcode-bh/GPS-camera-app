@@ -31,6 +31,9 @@ class SettingsController extends ChangeNotifier {
   int timerSeconds = 0;
   double mapZoom = 16.5;
 
+  /// Library grid density. Null until the user pinches the grid.
+  int? libraryColumns;
+
   void attach(SharedPreferences prefs) {
     _prefs = prefs;
     final s = prefs;
@@ -71,6 +74,7 @@ class SettingsController extends ChangeNotifier {
     stampEnabled = s.getBool('stampEnabled') ?? true;
     timerSeconds = s.getInt('timerSeconds') ?? 0;
     mapZoom = s.getDouble('mapZoom') ?? 16.5;
+    libraryColumns = s.getInt('libraryColumns');
   }
 
   static T _read<T extends Enum>(List<T> values, String? name, T fallback) =>
@@ -93,6 +97,8 @@ class SettingsController extends ChangeNotifier {
       s.setBool('stampEnabled', stampEnabled);
       s.setInt('timerSeconds', timerSeconds);
       s.setDouble('mapZoom', mapZoom);
+      final columns = libraryColumns;
+      if (columns != null) s.setInt('libraryColumns', columns);
     }
     notifyListeners();
   }

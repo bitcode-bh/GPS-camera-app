@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -8,7 +9,6 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 
 import '../../core/design/palette.dart';
@@ -18,14 +18,19 @@ import '../../core/glass.dart';
 import '../../core/widgets/transitions.dart';
 import '../../models/capture_options.dart';
 import '../../models/geo_data.dart';
+import '../../models/media_item.dart';
 import '../../models/template.dart';
 import '../../services/camera_adjustments.dart';
 import '../../services/capture_service.dart';
 import '../../services/location_service.dart';
+import '../../services/media_image.dart';
+import '../../services/media_library.dart';
 import '../../state/settings_controller.dart';
+import '../../state/state_machine.dart';
 import '../../state/template_controller.dart';
 import '../../widgets/geo_stamp.dart';
 import '../../widgets/mini_map.dart';
+import '../library/library_screen.dart';
 import '../settings/app_settings.dart';
 import '../templates/custom_template_editor.dart';
 import '../templates/templates_screen.dart';
@@ -33,7 +38,6 @@ import 'widgets/camera_control_bar.dart';
 import 'widgets/camera_design.dart';
 import 'widgets/camera_chrome.dart';
 import 'widgets/camera_layer.dart';
-import 'video_library.dart';
 
 enum _Adjustment { zoom, exposure, whiteBalance, reset }
 
@@ -49,8 +53,8 @@ class _CameraScreenState extends State<CameraScreen>
   final _location = LocationService();
   final _settings = SettingsController.instance;
   final _templates = TemplateController.instance;
+  final _library = MediaLibrary.instance;
   final _freezeKey = GlobalKey();
-  Uint8List? _lastShot;
   _Adjustment? _adjustment;
   int _minKelvin = 0, _maxKelvin = 0;
   int? _kelvin, _appliedKelvin;
@@ -65,7 +69,6 @@ class _CameraScreenState extends State<CameraScreen>
   Future<void> _cameraInterop = Future.value();
   bool _hasFlash = false;
   bool _flashPending = false;
-  bool _flipping = false;
   bool _zoomPending = false;
   bool _exposurePending = false;
   double _appliedZoom = 1;
@@ -102,8 +105,9 @@ class _CameraScreenState extends State<CameraScreen>
     }, onError: (Object _) {});
   }
 
-  StreamSubscription<GeoData?>? _geoSub;
-  GeoData? _geo;
+  StreamSubscription<GpsStatus>? _geoSub;
+  GpsStatus _gps = const GpsStatus(GpsState.acquiring);
+  GeoData? get _geo => _gps.fix;
   Timer? _fixExpiry;
 
   GeoData? get _freshGeo {
@@ -120,7 +124,6 @@ class _CameraScreenState extends State<CameraScreen>
 
   GeoData? _captureGeo;
   int _captureQuarterTurns = 0;
-  bool _locationUnavailable = false;
 
   // Live magnetometer compass (GPS heading is only valid while moving).
   // Kept in a ValueNotifier so compass ticks only repaint the stamp widget
@@ -140,12 +143,28 @@ class _CameraScreenState extends State<CameraScreen>
   String? _cameraError;
   bool _cameraPermissionError = false;
 
-  bool get _cameraReady =>
-      !_pausedByLifecycle && _cam?.value.isInitialized == true;
+  /// False once the microphone was refused. Photos and silent video still work.
+  bool _audioEnabled = true;
 
-  bool _discoveringCameras = false;
-  bool _initializing = false; // guard against concurrent controller inits
-  bool _pausedByLifecycle = false;
+  /// What the hardware session is doing. The single source of truth for
+  /// whether the shutter, lens switch and mode changes are available.
+  final _machine = CameraMachine();
+  CameraPhase get _phase => _machine.state;
+
+  bool get _cameraReady =>
+      _machine.hasPreview && _cam?.value.isInitialized == true;
+  bool get _capturing => _phase == CameraPhase.capturing;
+  bool get _shooting => _capturing || _phase == CameraPhase.countdown;
+
+  // The two reasons to hold the camera: the app is visible and nothing covers
+  // this screen. Everything else follows from them in [_syncSession].
+  bool _appVisible = true;
+  bool _covered = false;
+  bool get _wantCamera => mounted && _appVisible && !_covered;
+
+  /// Opening, closing and switching run one at a time, in order.
+  Future<void> _session = Future.value();
+  Future<void>? _recordingOp;
 
   double _zoom = 1, _minZoom = 1, _maxZoom = 8, _baseZoom = 1;
   double _exposure = 0, _minExp = 0, _maxExp = 0, _evStep = 0;
@@ -153,29 +172,21 @@ class _CameraScreenState extends State<CameraScreen>
   bool _focusLocked = false;
   int _focusLockRevision = 0;
   int _countdown = 0; // self-timer countdown shown over the viewfinder
+  int _countdownRun = 0;
 
   bool _settingsOpen = false; // app settings strip expanded
-  bool _showPreview = false; // in-app preview of the last capture
   double _stampDragDx = 0, _stampDragDy = 0;
   String? _notificationMsg;
   Timer? _notificationTimer;
 
   CameraMode _captureMode = CameraMode.photo;
 
-  bool _busy = false;
-  Future<void>? _recordingOperation;
-  Future<void>? _cameraRelease;
-  bool get _recordingBusy => _recording || _recordingOperation != null;
-  bool _recording = false;
   final _recElapsed = ValueNotifier(Duration.zero);
   final _videoClock = Stopwatch();
-  DateTime? _videoStartedAt;
-  final _videoSamples = <Map<String, Object>>[];
-  bool _stampRecording = false;
-  bool _keepVideoOriginal = false;
-  bool _videoClock24 = false;
+  _VideoJob? _video; // The recording in progress.
   bool _videoExporting = false;
   Timer? _recTimer;
+  Future<void> _saves = Future.value(); // Photo saves, in shutter order.
 
   bool _showFreeze = false;
   ImageProvider? _frozenBg;
@@ -191,14 +202,14 @@ class _CameraScreenState extends State<CameraScreen>
     // Settings changes (grid, map type, formats…) are infrequent and may affect
     // top-level chrome, so rebuild the screen when they change.
     _settings.addListener(_onSettings);
-    _initCamera();
-    _listenForOrientation();
-    _startLocation();
-    _compassSub = FlutterCompass.events?.listen(_onCompass);
-    // Restore the last capture so the thumbnail/preview works after a restart.
-    CaptureService.instance.loadLast().then((b) {
-      if (b != null && mounted) setState(() => _lastShot = b);
-    });
+    _library.addListener(_onSettings);
+    _machine.addListener(_onSettings);
+    _syncSession();
+    unawaited(
+      CaptureService.instance.migrateLegacyCaptures().then(
+        (_) => _library.refresh(),
+      ),
+    );
   }
 
   void _onCompass(CompassEvent e) {
@@ -225,6 +236,10 @@ class _CameraScreenState extends State<CameraScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _settings.removeListener(_onSettings);
+    _library.removeListener(_onSettings);
+    _machine
+      ..removeListener(_onSettings)
+      ..go(CameraPhase.released);
     _geoSub?.cancel();
     _gestureReadoutTimer?.cancel();
     _orientationSub?.cancel();
@@ -235,6 +250,7 @@ class _CameraScreenState extends State<CameraScreen>
     _focusTimer?.cancel();
     _notificationTimer?.cancel();
     _cam?.dispose();
+    _machine.dispose();
     _compassHeading.dispose();
     super.dispose();
   }
@@ -248,41 +264,42 @@ class _CameraScreenState extends State<CameraScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.hidden ||
-        state == AppLifecycleState.paused) {
-      if (!_pausedByLifecycle) {
-        _geoSub?.cancel();
-        _geoSub = null;
-        _orientationSub?.cancel();
-        _orientationSub = null;
-        _fixExpiry?.cancel();
-        _cameraRelease = _pauseCameraForLifecycle();
-      }
-    } else if (state == AppLifecycleState.resumed) {
-      _pausedByLifecycle = false;
+    // A dialog or the notification shade leaves the app visible, so the
+    // preview keeps running. Only leaving the screen releases the camera.
+    final visible =
+        state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.inactive;
+    if (visible == _appVisible) return;
+    _appVisible = visible;
+    _syncSession();
+  }
+
+  /// Runs the camera, GPS and sensors only while this screen is in front.
+  void _syncSession() {
+    if (_wantCamera) {
       _listenForOrientation();
-      if (_geoSub == null) _startLocation();
-      unawaited(_resumeCameraAfterLifecycle());
+      _compassSub ??= FlutterCompass.events?.listen(_onCompass);
+      unawaited(_openCamera());
+    } else {
+      _stopLocation();
+      _orientationSub?.cancel();
+      _orientationSub = null;
+      _compassSub?.cancel();
+      _compassSub = null;
+      unawaited(_closeCamera());
     }
   }
 
   void _startLocation() {
-    _geoSub?.cancel();
-    _fixExpiry?.cancel();
-    setState(() {
-      _geo = null;
-      _locationUnavailable = false;
-    });
-    _geoSub = _location.watch().listen((geo) {
+    _stopLocation();
+    setState(() => _gps = const GpsStatus(GpsState.acquiring));
+    _geoSub = _location.watch().listen((status) {
       if (!mounted) return;
-      setState(() {
-        _geo = geo;
-        _locationUnavailable = geo == null;
-      });
+      setState(() => _gps = status);
       _fixExpiry?.cancel();
-      final fixTime = geo?.fixTime;
+      final fixTime = status.fix?.fixTime;
       if (fixTime != null) {
+        // Rebuild when the fix ages out so it stops being shown as current.
         final remaining = fixTime
             .add(GeoData.fixLifetime)
             .difference(DateTime.now());
@@ -296,6 +313,12 @@ class _CameraScreenState extends State<CameraScreen>
     });
   }
 
+  void _stopLocation() {
+    _geoSub?.cancel();
+    _geoSub = null;
+    _fixExpiry?.cancel();
+  }
+
   Future<void> _openCameraSettings() async {
     try {
       if (await Geolocator.openAppSettings()) return;
@@ -303,67 +326,69 @@ class _CameraScreenState extends State<CameraScreen>
     _toast('Open your device settings to allow camera access');
   }
 
-  void _retryCamera() => unawaited(_initCamera());
+  void _retryCamera() => unawaited(_openCamera());
 
-  Future<void> _resumeCameraAfterLifecycle() async {
-    await _cameraRelease;
-    if (!mounted || _pausedByLifecycle) return;
-    if (_cameras.isEmpty) {
-      await _initCamera();
-      return;
-    }
-    while (_initializing && mounted && !_pausedByLifecycle) {
-      await Future<void>.delayed(const Duration(milliseconds: 50));
-    }
-    if (!mounted || _pausedByLifecycle || _cam != null) return;
-    await _setupController(_cameras[_camIndex]);
+  Future<void> _enqueue(Future<void> Function() operation) {
+    final run = _session.then((_) => operation());
+    _session = run.then<void>((_) {}, onError: (Object _) {});
+    return run;
   }
 
-  Future<void> _pauseCameraForLifecycle() async {
-    _pausedByLifecycle = true;
-    final cam = _cam;
-    _cam = null;
-    if (mounted) setState(() {});
-    if (cam == null) {
-      await _cameraRelease;
-      return;
-    }
-    await _recordingOperation;
-    if (cam.value.isRecordingVideo) {
-      try {
-        await _stopAndSaveVideo(cam);
-      } catch (_) {}
-    }
-    await cam.dispose();
-  }
-
-  // ── Camera setup ───────────────────────────────────────────────────────
-  Future<void> _initCamera() async {
-    if (!mounted || _pausedByLifecycle || _discoveringCameras) return;
-    _discoveringCameras = true;
+  // ── Camera session ─────────────────────────────────────────────────────
+  Future<void> _openCamera() => _enqueue(() async {
+    if (!_wantCamera || _cam != null) return;
+    if (!_machine.go(CameraPhase.initializing)) return;
     setState(() => _cameraError = null);
     try {
-      final cams = await availableCameras();
-      if (!mounted || _pausedByLifecycle) return;
-      if (cams.isEmpty) {
-        _setCameraError();
-        return;
+      if (_cameras.isEmpty) {
+        final cameras = await availableCameras();
+        if (cameras.isEmpty) {
+          _failCamera();
+          return;
+        }
+        _cameras = cameras;
+        final back = cameras.indexWhere(
+          (c) => c.lensDirection == CameraLensDirection.back,
+        );
+        _camIndex = back >= 0 ? back : 0;
       }
-      _cameras = cams;
-      final back = cams.indexWhere(
-        (c) => c.lensDirection == CameraLensDirection.back,
-      );
-      _camIndex = back >= 0 ? back : 0;
-      await _setupController(_cameras[_camIndex]);
+      await _startController(_cameras[_camIndex]);
     } catch (error) {
-      _setCameraError(error);
+      _failCamera(error);
     } finally {
-      _discoveringCameras = false;
+      // After the camera's own permission prompts, so dialogs never overlap.
+      if (_wantCamera && _geoSub == null) _startLocation();
     }
+  });
+
+  Future<void> _closeCamera() => _enqueue(() async {
+    if (_wantCamera) return; // Back in front before the release ran.
+    await _finishRecording();
+    final camera = _cam;
+    _cam = null;
+    if (_phase != CameraPhase.released) _machine.go(CameraPhase.suspended);
+    await camera?.dispose();
+  });
+
+  /// A recording is always finalized and saved before the camera is released.
+  Future<void> _finishRecording() async {
+    try {
+      await _recordingOp;
+    } catch (_) {}
+    final camera = _cam;
+    if (camera == null || !camera.value.isRecordingVideo) return;
+    _machine.go(CameraPhase.stoppingRecording);
+    try {
+      await _stopAndSaveVideo(camera);
+    } catch (_) {}
   }
 
-  void _setCameraError([Object? error]) {
-    if (!mounted || _pausedByLifecycle) return;
+  void _failCamera([Object? error]) {
+    if (!mounted) return;
+    if (!_wantCamera) {
+      _machine.go(CameraPhase.suspended);
+      return;
+    }
     final code = switch (error) {
       CameraException() => error.code,
       PlatformException() => error.code,
@@ -371,25 +396,24 @@ class _CameraScreenState extends State<CameraScreen>
     };
     setState(() {
       _cameraPermissionError =
-          code.startsWith('CameraAccess') ||
-          code.startsWith('AudioAccess') ||
-          code == 'camera_permission';
-      _cameraError = code.startsWith('AudioAccess')
-          ? 'Microphone access is required to start the camera.'
-          : _cameraPermissionError
+          code.startsWith('CameraAccess') || code == 'camera_permission';
+      _cameraError = _cameraPermissionError
           ? 'Allow camera access to take photos.'
           : 'Camera unavailable';
     });
+    _machine.go(CameraPhase.error);
   }
 
-  Future<void> _setupController(CameraDescription d) async {
-    if (!mounted || _initializing || _pausedByLifecycle) return;
-    _initializing = true;
-    setState(() => _cameraError = null);
+  /// Opens [d] and applies the saved zoom, exposure, flash and white balance.
+  /// Called with the phase already at [CameraPhase.initializing].
+  Future<void> _startController(CameraDescription d) async {
+    // `max` lets each use case take the sensor's native best. A fixed video
+    // preset forces stills to 16:9, which crops 4:3 photos and, on some
+    // devices, returns JPEGs with a padded green edge.
     final c = CameraController(
       d,
-      ResolutionPreset.ultraHigh,
-      enableAudio: true,
+      ResolutionPreset.max,
+      enableAudio: _audioEnabled,
     );
     try {
       await c.initialize();
@@ -433,9 +457,9 @@ class _CameraScreenState extends State<CameraScreen>
           // Keep the saved setting so it can be retried on a supported lens.
         }
       }
-      if (!mounted || _pausedByLifecycle) {
+      if (!_wantCamera) {
         await c.dispose();
-        _initializing = false;
+        if (mounted) _machine.go(CameraPhase.suspended);
         return;
       }
       setState(() {
@@ -451,11 +475,17 @@ class _CameraScreenState extends State<CameraScreen>
         if (appliedKelvin != null) _kelvin = appliedKelvin;
         if (!_whiteBalanceSupported) _editingWhiteBalance = false;
       });
+      _machine.go(CameraPhase.previewing);
     } catch (error) {
-      _setCameraError(error);
       await c.dispose();
-    } finally {
-      _initializing = false;
+      final code = error is CameraException ? error.code : '';
+      if (code.startsWith('AudioAccess') && _audioEnabled) {
+        // The camera does not need the microphone. Carry on without sound.
+        _audioEnabled = false;
+        _toast('Microphone is off. Videos will record without sound.');
+        return _startController(d);
+      }
+      _failCamera(error);
     }
   }
 
@@ -515,7 +545,7 @@ class _CameraScreenState extends State<CameraScreen>
   };
 
   void _onScaleUpdate(ScaleUpdateDetails details, Size box) {
-    if (!_cameraReady || _busy || _countdown > 0) return;
+    if (!_cameraReady || _shooting) return;
     if (details.pointerCount >= 2) {
       _hadPinch = true;
       if (_maxZoom > _minZoom) {
@@ -567,13 +597,7 @@ class _CameraScreenState extends State<CameraScreen>
 
   void _resetAdjustments() {
     final camera = _cam;
-    if (!_cameraReady ||
-        camera == null ||
-        _busy ||
-        _countdown > 0 ||
-        _showFreeze) {
-      return;
-    }
+    if (!_cameraReady || camera == null || _shooting || _showFreeze) return;
     setState(() {
       _editingWhiteBalance = false;
       _adjustment = null;
@@ -636,7 +660,7 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   void _selectLeftAdjustment(_Adjustment adjustment) {
-    if (!_cameraReady || _busy || _countdown > 0) return;
+    if (!_cameraReady || _shooting) return;
     if (_leftAdjustment == adjustment) {
       _toggleAdjustment(adjustment);
       return;
@@ -709,29 +733,33 @@ class _CameraScreenState extends State<CameraScreen>
 
   /// Toggle between the back and front camera (dual-camera switch).
   Future<void> _flip() async {
-    if (_cameraChangesLocked) return;
-    if (!_cameraReady || _cameras.length < 2) return;
+    if (_cameraChangesLocked || !_cameraReady || _cameras.length < 2) return;
     final want = _isFront
         ? CameraLensDirection.back
         : CameraLensDirection.front;
     final target = _cameras.indexWhere((c) => c.lensDirection == want);
-    if (target < 0) return;
-    _camIndex = target;
-    final old = _cam;
+    if (target < 0 || !_machine.go(CameraPhase.switching)) return;
     setState(() {
-      _cam = null;
-      _flipping = true;
       _adjustment = null;
       _focus = null;
     });
-    final release = old?.dispose();
-    _cameraRelease = release;
-    try {
-      await release;
-      await _setupController(_cameras[_camIndex]);
-    } finally {
-      if (mounted) setState(() => _flipping = false);
-    }
+    await _enqueue(() async {
+      final old = _cam;
+      _cam = null;
+      if (mounted) setState(() {});
+      await old?.dispose();
+      _camIndex = target;
+      if (!_wantCamera) {
+        if (mounted) _machine.go(CameraPhase.suspended);
+        return;
+      }
+      _machine.go(CameraPhase.initializing);
+      try {
+        await _startController(_cameras[_camIndex]);
+      } catch (error) {
+        _failCamera(error);
+      }
+    });
   }
 
   void _tapViewfinder(Offset local, Size box) {
@@ -739,8 +767,7 @@ class _CameraScreenState extends State<CameraScreen>
     final heldSize = turns.isOdd ? box.flipped : box;
     final point = _heldPoint(local, box, turns);
     if (_cameraReady &&
-        !_busy &&
-        _countdown == 0 &&
+        !_shooting &&
         !_showFreeze &&
         !_settingsOpen &&
         heldSize.height >= 174 &&
@@ -907,50 +934,57 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   bool get _cameraChangesLocked =>
-      _recordingBusy ||
-      _flipping ||
-      _flashPending ||
-      _whiteBalancePending ||
-      _discoveringCameras ||
-      _initializing ||
-      _busy ||
-      _countdown > 0;
+      !_machine.canReconfigure || _flashPending || _whiteBalancePending;
 
   Future<void> _onShutter() async {
-    if (!_cameraReady ||
-        _countdown > 0 ||
-        _flashPending ||
-        (_whiteBalancePending && !_recording)) {
+    if (!_cameraReady || _flashPending) return;
+    if (_phase == CameraPhase.countdown) {
+      // A second press cancels the self-timer.
+      _countdownRun++;
+      _machine.go(CameraPhase.previewing);
+      setState(() => _countdown = 0);
       return;
     }
     if (_captureMode == CameraMode.video) {
-      if (_recordingOperation != null) return;
+      if (_recordingOp != null) return;
+      if (_whiteBalancePending && !_machine.isRecording) return;
       final operation = _toggleRecording();
-      setState(() => _recordingOperation = operation);
+      _recordingOp = operation;
       try {
         await operation;
       } finally {
-        _recordingOperation = null;
-        if (mounted) setState(() {});
+        _recordingOp = null;
       }
       return;
     }
-    if (_busy) return;
-    final t = _settings.timerSeconds;
-    if (t > 0) {
-      for (var s = t; s > 0; s--) {
-        if (!mounted || !_cameraReady) break;
+    if (_phase != CameraPhase.previewing || _whiteBalancePending) return;
+    final seconds = _settings.timerSeconds;
+    if (seconds > 0) {
+      if (!_machine.go(CameraPhase.countdown)) return;
+      final run = ++_countdownRun;
+      for (var s = seconds; s > 0; s--) {
         setState(() => _countdown = s);
         await Future.delayed(const Duration(seconds: 1));
+        if (!mounted) return;
+        // Cancelled, or the camera was released while counting.
+        if (run != _countdownRun || _phase != CameraPhase.countdown) {
+          if (run == _countdownRun) setState(() => _countdown = 0);
+          return;
+        }
       }
-      if (!mounted) return;
       setState(() => _countdown = 0);
     }
     await _capturePhoto();
   }
 
+  void _endCapture() {
+    if (_capturing) _machine.go(CameraPhase.previewing);
+  }
+
   Future<void> _capturePhoto() async {
-    if (!mounted || _busy || !_cameraReady) return;
+    final cam = _cam;
+    if (!mounted || cam == null || !_cameraReady) return;
+    if (!_machine.go(CameraPhase.capturing)) return;
     final shutterTime = DateTime.now();
     final stampQuarterTurns = _iconQuarterTurns;
     final captureGeo = _settings.stampEnabled
@@ -963,11 +997,7 @@ class _CameraScreenState extends State<CameraScreen>
       _toast('GPS unavailable. Coordinates omitted.');
     }
     final saveOriginal = _settings.saveOriginal;
-    final cam = _cam!;
-    setState(() {
-      _busy = true;
-      _adjustment = null;
-    });
+    setState(() => _adjustment = null);
 
     String? rawShotPath;
     try {
@@ -977,7 +1007,7 @@ class _CameraScreenState extends State<CameraScreen>
     }
     if (!mounted) return;
     if (rawShotPath == null) {
-      setState(() => _busy = false);
+      _endCapture();
       _toast('Capture failed. Try again.');
       return;
     }
@@ -991,13 +1021,12 @@ class _CameraScreenState extends State<CameraScreen>
     await precacheImage(image, context, onError: (_, _) => decoded = false);
     if (!mounted) return;
     if (!decoded) {
-      setState(() => _busy = false);
+      _endCapture();
       _toast('Could not read the captured photo');
       return;
     }
 
-    // 2. Show the shutter flash.
-    if (!mounted) return;
+    // Freeze the frame under the stamp and flash the shutter.
     setState(() {
       _frozenBg = image;
       _captureGeo = captureGeo;
@@ -1006,116 +1035,164 @@ class _CameraScreenState extends State<CameraScreen>
       _flash2 = true;
     });
     await WidgetsBinding.instance.endOfFrame;
-    if (mounted) setState(() => _flash2 = false);
+    if (!mounted) return;
+    setState(() => _flash2 = false);
 
-    // 3. Start GPU rasterisation of the composite (stamp over live frame).
+    // The snapshot captures the layer tree now, before the preview returns.
     final boundary =
         _freezeKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-    // toImage() snapshots the layer tree atomically before the next setState.
-    final renderFuture = boundary != null
-        ? CaptureService.instance.rasterize(boundary, pixelRatio: stampRatio)
-        : Future<Uint8List?>.value(null);
+    final snapshot = boundary == null
+        ? Future<ui.Image?>.value()
+        : CaptureService.instance.snapshot(boundary, pixelRatio: stampRatio);
 
-    // 4. Restore the live preview while saving.
-    if (!mounted) return;
     setState(() {
       _showFreeze = false;
       _captureGeo = null;
       _frozenBg = null;
     });
+    // The camera is free for the next shot. Saving continues in order.
+    _endCapture();
+    final raw = rawShotPath;
+    _saves = _saves.then(
+      (_) => _savePhoto(
+        raw,
+        snapshot,
+        taken: shutterTime,
+        geotag: geotag,
+        quarterTurns: stampQuarterTurns,
+        saveOriginal: saveOriginal,
+      ),
+    );
+  }
 
-    // 5. Finish compositing and saving in the background.
+  /// Encode, tag, write, then publish to the Library. Each step runs only
+  /// after the one before it succeeded.
+  Future<void> _savePhoto(
+    String rawShotPath,
+    Future<ui.Image?> snapshot, {
+    required DateTime taken,
+    required GeoData? geotag,
+    required int quarterTurns,
+    required bool saveOriginal,
+  }) async {
+    final captures = CaptureService.instance;
     try {
-      var bytes = await renderFuture;
-
-      if (bytes != null) {
-        final captures = CaptureService.instance;
-        final tagged = await captures.setPhotoLocation(
-          bytes,
-          sourcePath: rawShotPath,
+      final frame = await snapshot;
+      var bytes = frame == null ? null : await captures.encodeJpeg(frame);
+      if (bytes == null) {
+        _toast('Capture failed');
+        return;
+      }
+      final tagged = await captures.setPhotoLocation(
+        bytes,
+        sourcePath: rawShotPath,
+        latitude: geotag?.lat,
+        longitude: geotag?.lon,
+        quarterTurns: quarterTurns,
+      );
+      if (tagged == null && geotag != null) {
+        _toast('Photo saved without a GPS geotag');
+      }
+      bytes = tagged ?? bytes;
+      final uri = await captures.saveImageToGallery(bytes, taken: taken);
+      if (uri == null) {
+        _toast('Could not save the photo');
+        return;
+      }
+      _templates.bumpPhotoNumber();
+      String? originalKey;
+      if (saveOriginal) {
+        final original = await captures.saveOriginalToGallery(
+          rawShotPath,
+          taken: taken,
           latitude: geotag?.lat,
           longitude: geotag?.lon,
         );
-        if (tagged == null && geotag != null) {
-          _toast('Photo saved without a GPS geotag');
-        }
-        bytes = tagged ?? bytes;
-        await captures.cacheLast(bytes);
-        _templates.bumpPhotoNumber();
-        final galleryRef = await captures.saveImageToGallery(bytes);
-        final localCapture = await captures.saveLocalCapture(
-          bytes,
-          galleryRef: galleryRef,
-        );
-        if (mounted) setState(() => _lastShot = bytes);
-        if (galleryRef == null) {
-          _toast(
-            localCapture == null
-                ? 'Could not save the photo'
-                : 'Photo available in the app gallery only',
-          );
-        }
-        if (saveOriginal) {
-          final saved = await captures.saveOriginalToGallery(
-            rawShotPath,
-            localCapture: localCapture,
-            latitude: geotag?.lat,
-            longitude: geotag?.lon,
-          );
-          if (!saved) _toast('Could not save the original photo');
-        }
-      } else if (mounted) {
-        _toast('Capture failed');
+        if (original == null) _toast('Could not save the original photo');
+        originalKey = CaptureService.mediaKey(original, video: false);
       }
+      final location = geotag == null
+          ? null
+          : MediaLocation(geotag.lat, geotag.lon, place: geotag.place);
+      final key = CaptureService.mediaKey(uri, video: false);
+      if (key != null) {
+        await _library.index.recordCapture(
+          key,
+          location: location,
+          originalKey: originalKey,
+        );
+      }
+      if (originalKey != null) {
+        await _library.index.recordCapture(originalKey, location: location);
+      }
+      unawaited(_library.refresh());
     } catch (_) {
       _toast('Could not finish saving the photo');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      await _deleteQuietly(rawShotPath);
     }
+  }
+
+  Future<void> _deleteQuietly(String path) async {
+    try {
+      await File(path).delete();
+    } catch (_) {}
   }
 
   Future<void> _toggleRecording() async {
     final cam = _cam;
-    if (cam == null || !cam.value.isInitialized) {
-      _toast('Recording needs a camera');
+    if (cam == null || !cam.value.isInitialized) return;
+    if (_machine.isRecording) {
+      _machine.go(CameraPhase.stoppingRecording);
+      try {
+        await _stopAndSaveVideo(cam);
+      } catch (_) {
+        _toast('Recording error');
+      } finally {
+        if (_phase == CameraPhase.stoppingRecording) {
+          _machine.go(CameraPhase.previewing);
+        }
+      }
       return;
     }
+    if (_videoExporting || !_machine.go(CameraPhase.startingRecording)) return;
     try {
-      if (!_recording) {
-        await cam.startVideoRecording();
-        _videoStartedAt = DateTime.now();
-        _stampRecording = _settings.stampEnabled;
-        _keepVideoOriginal = _settings.saveOriginal;
-        _videoClock24 = _settings.clock24;
-        _videoSamples.clear();
-        _videoClock
-          ..reset()
-          ..start();
-        _sampleVideoLocation(0);
-        if (!mounted || _pausedByLifecycle) return;
-        _recElapsed.value = Duration.zero;
-        _recTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-          if (mounted) {
-            _sampleVideoLocation(_videoClock.elapsedMilliseconds);
-            _recElapsed.value = _videoClock.elapsed;
-          }
-        });
-        setState(() => _recording = true);
-      } else {
-        await _stopAndSaveVideo(cam);
-      }
+      await cam.startVideoRecording();
     } catch (_) {
       _toast('Recording error');
-      if (mounted) {
-        setState(() {
-          _recording = false;
-        });
+      if (_phase == CameraPhase.startingRecording) {
+        _machine.go(CameraPhase.previewing);
       }
+      return;
     }
+    final geo = _settings.saveLocation ? _usableGeo : null;
+    _video = _VideoJob(
+      startedAt: DateTime.now(),
+      stamp: _settings.stampEnabled,
+      keepOriginal: _settings.saveOriginal,
+      clock24: _settings.clock24,
+      location: geo == null
+          ? null
+          : MediaLocation(geo.lat, geo.lon, place: geo.place),
+    );
+    _videoClock
+      ..reset()
+      ..start();
+    _sampleVideoLocation(0);
+    _recElapsed.value = Duration.zero;
+    _recTimer?.cancel();
+    _recTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) {
+        _sampleVideoLocation(_videoClock.elapsedMilliseconds);
+        _recElapsed.value = _videoClock.elapsed;
+      }
+    });
+    _machine.go(CameraPhase.recording);
   }
 
   void _sampleVideoLocation(int atMs) {
-    if (!_stampRecording) return;
+    final job = _video;
+    if (job == null || !job.stamp) return;
     final geo = _usableGeo;
     final config = _templates.config;
     final location = geo == null
@@ -1126,50 +1203,68 @@ class _CameraScreenState extends State<CameraScreen>
             if (config.has(StampField.accuracy))
               geo.accuracyStr(_settings.unitSystem),
           ].join('  ');
-    if (_videoSamples.isEmpty || _videoSamples.last['label'] != location) {
-      _videoSamples.add({'atMs': atMs, 'label': location});
+    if (job.samples.isEmpty || job.samples.last['label'] != location) {
+      job.samples.add({'atMs': atMs, 'label': location});
     }
   }
 
   Future<void> _stopAndSaveVideo(CameraController cam) async {
     _recTimer?.cancel();
     _videoClock.stop();
-    try {
-      final file = await cam.stopVideoRecording();
-      if (mounted) setState(() => _videoExporting = true);
-      unawaited(_exportVideo(file.path));
-    } finally {
-      if (mounted) setState(() => _recording = false);
-    }
+    final job = _video;
+    _video = null;
+    final file = await cam.stopVideoRecording();
+    if (job == null) return;
+    if (mounted) setState(() => _videoExporting = true);
+    unawaited(_exportVideo(file.path, job));
   }
 
-  Future<void> _exportVideo(String path) async {
+  /// Stamp, write, then publish. The recording stays in the cache until its
+  /// gallery copy exists.
+  Future<void> _exportVideo(String path, _VideoJob job) async {
     final service = CaptureService.instance;
-    final startedAt = _videoStartedAt;
     String? stamped;
     try {
-      if (_stampRecording && startedAt != null) {
+      if (job.stamp) {
         _toast('Rendering video stamp…');
         stamped = await service.stampVideo(
           path,
-          startedAt: startedAt,
-          samples: List.of(_videoSamples),
-          clock24: _videoClock24,
+          startedAt: job.startedAt,
+          samples: job.samples,
+          clock24: job.clock24,
         );
       }
-      final saved = await service.saveVideoToGallery(stamped ?? path);
-      if (!saved) {
+      final uri = await service.saveVideoToGallery(
+        stamped ?? path,
+        taken: job.startedAt,
+        stamped: stamped != null,
+      );
+      if (uri == null) {
         _toast('Could not save video to the gallery');
-      } else if (_stampRecording && stamped == null) {
-        _toast('Original video saved without a stamp.');
-      } else if (stamped != null &&
-          _keepVideoOriginal &&
-          !await service.saveVideoToGallery(path)) {
-        _toast('Stamped video saved. Could not save the original.');
-      } else {
-        _toast(stamped == null ? 'Video saved' : 'Stamped video saved');
+        return;
       }
-      if (stamped != null && saved) await File(stamped).delete();
+      String? original;
+      var message = stamped != null
+          ? 'Stamped video saved'
+          : (job.stamp
+                ? 'Original video saved without a stamp.'
+                : 'Video saved');
+      if (stamped != null && job.keepOriginal) {
+        original = await service.saveVideoToGallery(path, taken: job.startedAt);
+        if (original == null) {
+          message = 'Stamped video saved. Could not save the original.';
+        }
+      }
+      for (final saved in [uri, original]) {
+        final key = CaptureService.mediaKey(saved, video: true);
+        if (key != null) {
+          await _library.index.recordCapture(key, location: job.location);
+        }
+      }
+      _toast(message);
+      await _deleteQuietly(path);
+      if (stamped != null) await _deleteQuietly(stamped);
+      unawaited(_library.refresh());
     } catch (_) {
       _toast('Could not finish video export');
     } finally {
@@ -1193,14 +1288,16 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   // ── Navigation ──────────────────────────────────────────────────────────
-  void _openGallery() {
-    if (_captureMode == CameraMode.video) {
-      showVideoLibrary(context);
-    } else if (_lastShot != null) {
-      setState(() => _showPreview = true);
-    } else {
-      CaptureService.instance.openGallery();
-    }
+  /// The Library covers this screen, so the camera and GPS rest meanwhile.
+  Future<void> _openLibrary() async {
+    if (_covered) return;
+    _covered = true;
+    _syncSession();
+    await Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const LibraryScreen()));
+    _covered = false;
+    if (mounted) _syncSession();
   }
 
   void _openStampSettings() {
@@ -1587,23 +1684,53 @@ class _CameraScreenState extends State<CameraScreen>
                 () => _settings.saveLocation = !_settings.saveLocation,
               ),
             ),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 12),
-            child: Text(
-              'On the stamp, swipe up or down to switch designs. Swipe sideways to move the map. Hold to browse designs.',
-              style: TextStyle(fontSize: 12, color: Colors.white70),
-            ),
-          ),
           _stampRow('Display & units', 'Settings', () {
             _dismissMenus();
             showSettingsCategory(context, SettingsCat.display);
           }),
-          if (_locationUnavailable)
-            _stampRow('Location unavailable', 'Retry', _startLocation),
+          if (_gpsNotice() case (final label, final action, final onTap))
+            _stampRow(label, action, onTap),
         ],
       ),
     ),
   );
+
+  /// Why there is no usable position, and the one action that helps.
+  (String, String, VoidCallback)? _gpsNotice() {
+    Future<void> appSettings() => Geolocator.openAppSettings();
+    final accuracy = _freshGeo?.accuracy;
+    return switch (_gps.stateAt(DateTime.now())) {
+      GpsState.permissionRequired => (
+        'Location permission needed',
+        'Allow',
+        _startLocation,
+      ),
+      GpsState.permissionDenied => (
+        'Location permission is off',
+        'Open Settings',
+        appSettings,
+      ),
+      GpsState.disabled => (
+        'Location is turned off',
+        'Turn on',
+        Geolocator.openLocationSettings,
+      ),
+      GpsState.acquiring => ('GPS', 'Searching…', () {}),
+      GpsState.stale ||
+      GpsState.unavailable => ('No GPS signal', 'Retry', _startLocation),
+      GpsState.fix when _gps.approximate => (
+        'Approximate location only',
+        'Open Settings',
+        appSettings,
+      ),
+      GpsState.fix when accuracy != null && _usableGeo == null => (
+        'Weak GPS signal',
+        '±${accuracy.round()} m',
+        () {},
+      ),
+      GpsState.fix => null,
+    };
+  }
 
   Widget _stampRow(String label, String value, VoidCallback action) =>
       TextButton(
@@ -1636,12 +1763,10 @@ class _CameraScreenState extends State<CameraScreen>
     final bottomPad = mq.padding.bottom;
 
     return PopScope(
-      canPop: !_settingsOpen && !_showPreview && _adjustment == null,
+      canPop: !_settingsOpen && _adjustment == null,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        if (_showPreview) {
-          setState(() => _showPreview = false);
-        } else if (_settingsOpen) {
+        if (_settingsOpen) {
           _dismissMenus();
         } else {
           setState(() => _adjustment = null);
@@ -1716,7 +1841,8 @@ class _CameraScreenState extends State<CameraScreen>
                                 ),
                                 child: GestureDetector(
                                   behavior: HitTestBehavior.opaque,
-                                  onLongPress: _recordingBusy || _busy
+                                  onLongPress:
+                                      _machine.recordingBusy || _capturing
                                       ? null
                                       : _openStampDesigns,
                                   onPanStart: (details) {
@@ -1728,7 +1854,9 @@ class _CameraScreenState extends State<CameraScreen>
                                     _stampDragDy += details.delta.dy;
                                   },
                                   onPanEnd: (details) {
-                                    if (_recordingBusy || _busy) return;
+                                    if (_machine.recordingBusy || _capturing) {
+                                      return;
+                                    }
                                     final absX = _stampDragDx.abs();
                                     final absY = _stampDragDy.abs();
                                     if (absY > absX * 1.3 && absY >= 40) {
@@ -1744,7 +1872,8 @@ class _CameraScreenState extends State<CameraScreen>
                                       forCapture: _showFreeze,
                                       config: _templates.config,
                                       settings: _settings,
-                                      onMapTap: _recordingBusy || _busy
+                                      onMapTap:
+                                          _machine.recordingBusy || _capturing
                                           ? null
                                           : () {
                                               showMapZoomPopup(
@@ -1784,7 +1913,7 @@ class _CameraScreenState extends State<CameraScreen>
                   ),
                 ),
 
-                if (_cameraError != null)
+                if (_phase == CameraPhase.error && _cameraError != null)
                   Positioned(
                     top: viewfinderTop,
                     left: 0,
@@ -1900,7 +2029,9 @@ class _CameraScreenState extends State<CameraScreen>
                       ),
                     ),
                   ),
-                if (_notificationMsg != null && !_settingsOpen && !_recording)
+                if (_notificationMsg != null &&
+                    !_settingsOpen &&
+                    !_machine.isRecording)
                   Positioned(
                     top: viewfinderTop + 10,
                     left: viewfinderLeft + 16,
@@ -1928,7 +2059,7 @@ class _CameraScreenState extends State<CameraScreen>
                   ),
 
                 // Recording indicator.
-                if (_recording)
+                if (_machine.isRecording)
                   Positioned(
                     top: viewfinderTop + 10,
                     left: viewfinderLeft,
@@ -1943,7 +2074,7 @@ class _CameraScreenState extends State<CameraScreen>
                   ),
 
                 // Self-timer countdown.
-                if (_countdown > 0)
+                if (_phase == CameraPhase.countdown && _countdown > 0)
                   Positioned(
                     top: viewfinderTop,
                     left: viewfinderLeft,
@@ -1975,29 +2106,28 @@ class _CameraScreenState extends State<CameraScreen>
                     mode: _captureMode,
                     iconTurns: _iconQuarterTurns / 4,
                     busy:
-                        _busy ||
-                        _recordingOperation != null ||
+                        _capturing ||
+                        _phase == CameraPhase.startingRecording ||
+                        _phase == CameraPhase.stoppingRecording ||
                         (_captureMode == CameraMode.video && _videoExporting),
-                    lastShot: _lastShot,
+                    lastShot: switch (_library.items.firstOrNull) {
+                      final MediaItem newest => MediaThumbnail(newest),
+                      null => null,
+                    },
                     onMode: _selectCaptureMode,
                     onShutter:
                         _cameraReady &&
-                            _countdown == 0 &&
                             !_flashPending &&
-                            (!_whiteBalancePending || _recording)
+                            (!_whiteBalancePending || _machine.isRecording)
                         ? _onShutter
                         : null,
-                    recording: _recording,
+                    recording: _machine.isRecording,
                     lockCameraChanges: _cameraChangesLocked,
                     onFlip: _canFlip ? _flip : null,
-                    onGallery:
-                        _recordingBusy ||
-                            _busy ||
-                            (_captureMode == CameraMode.video &&
-                                _videoExporting)
+                    onGallery: _machine.recordingBusy || _capturing
                         ? null
-                        : _openGallery,
-                    onStamp: _recordingBusy || _busy
+                        : _openLibrary,
+                    onStamp: _machine.recordingBusy || _capturing
                         ? null
                         : _openStampSettings,
                   ),
@@ -2034,23 +2164,6 @@ class _CameraScreenState extends State<CameraScreen>
                     child: Container(color: Colors.white),
                   ),
                 ),
-
-                // In-app preview of the most recent capture. It sits above all
-                // camera overlays so camera sleep never blocks gallery gestures.
-                if (_showPreview && _lastShot != null)
-                  Positioned.fill(
-                    child: _PreviewOverlay(
-                      latestBytes: _lastShot!,
-                      onClose: () => setState(() => _showPreview = false),
-                      onDeleted: () async {
-                        final bytes = await CaptureService.instance.loadLast();
-                        if (mounted) setState(() => _lastShot = bytes);
-                      },
-                      onOpenGallery: () =>
-                          CaptureService.instance.openGallery(),
-                      onOpenVideos: () => showVideoLibrary(context),
-                    ),
-                  ),
               ],
             );
           },
@@ -2060,539 +2173,23 @@ class _CameraScreenState extends State<CameraScreen>
   }
 }
 
-/// Full-screen viewer for the local captures (pinch-zoomable, swipeable), with a
-/// page indicator, close button, and a shortcut to the phone's gallery.
-class _PreviewOverlay extends StatefulWidget {
-  final Uint8List latestBytes;
-  final VoidCallback onClose;
-  final Future<void> Function() onDeleted;
-  final VoidCallback onOpenGallery;
-  final VoidCallback onOpenVideos;
-  const _PreviewOverlay({
-    required this.latestBytes,
-    required this.onClose,
-    required this.onDeleted,
-    required this.onOpenGallery,
-    required this.onOpenVideos,
+/// What a recording needs once it stops, fixed when it starts so a later
+/// recording or settings change cannot alter it.
+class _VideoJob {
+  _VideoJob({
+    required this.startedAt,
+    required this.stamp,
+    required this.keepOriginal,
+    required this.clock24,
+    required this.location,
   });
 
-  @override
-  State<_PreviewOverlay> createState() => _PreviewOverlayState();
-}
-
-class _PreviewOverlayState extends State<_PreviewOverlay> {
-  List<File> _files = [];
-  bool _loading = true;
-  late final PageController _pageController;
-  int _currentPage = 0;
-  bool _zoomed = false;
-  bool _deleting = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController();
-    _loadFiles();
-  }
-
-  Future<void> _loadFiles() async {
-    final files = await CaptureService.instance.getLocalCaptures();
-    if (mounted) {
-      setState(() {
-        _files = files;
-        _loading = false;
-      });
-      _prefetchNeighbors(_currentPage);
-    }
-  }
-
-  /// Warm the image cache for the pages on either side of [idx] so a swipe
-  /// shows the next photo instantly instead of flashing while it decodes.
-  /// Uses the same downscaled provider as the on-screen [Image.file] so the
-  /// precache and the render share one cache entry.
-  void _prefetchNeighbors(int idx) {
-    if (!mounted || _files.isEmpty) return;
-    final mq = MediaQuery.of(context);
-    final cacheWidth = (mq.size.width * mq.devicePixelRatio).round();
-    for (final i in [idx - 1, idx + 1]) {
-      if (i < 0 || i >= _files.length) continue;
-      precacheImage(
-        ResizeImage(FileImage(_files[i]), width: cacheWidth),
-        context,
-      ).catchError((_) {});
-    }
-  }
-
-  Future<void> _share() async {
-    if (_files.isEmpty) return;
-    await SharePlus.instance.share(
-      ShareParams(files: [XFile(_files[_currentPage].path)]),
-    );
-  }
-
-  Future<void> _comparePhoto() async {
-    if (_files.isEmpty || _deleting) return;
-    final stamped = _files[_currentPage];
-    final original = CaptureService.instance.originalFor(stamped);
-    final hasOriginal = await original.exists();
-    if (!mounted) return;
-    var showOriginal = true;
-    await showDialog<void>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Text(
-            hasOriginal
-                ? (showOriginal ? 'Original photo' : 'Stamped photo')
-                : 'Original unavailable',
-          ),
-          content: hasOriginal
-              ? Image.file(
-                  showOriginal ? original : stamped,
-                  fit: BoxFit.contain,
-                )
-              : const Text(
-                  'Enable Save Original before taking a photo to compare both versions here.',
-                ),
-          actions: [
-            if (hasOriginal)
-              TextButton(
-                onPressed: () =>
-                    setDialogState(() => showOriginal = !showOriginal),
-                child: Text(showOriginal ? 'Show stamped' : 'Show original'),
-              ),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showMetadata() async {
-    if (_files.isEmpty || _deleting) return;
-    final data = await CaptureService.instance.photoMetadata(
-      _files[_currentPage],
-    );
-    if (!mounted) return;
-    final lat = data?['latitude'] as double?;
-    final lon = data?['longitude'] as double?;
-    final settings = SettingsController.instance;
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Photo details'),
-        content: data == null
-            ? const Text('Photo metadata unavailable.')
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('${data['width']} × ${data['height']} px'),
-                  Text(
-                    'Saved ${DateTime.fromMillisecondsSinceEpoch(data['modifiedMs'] as int).toLocal().toString().split('.').first}',
-                  ),
-                  const SizedBox(height: Insets.xs),
-                  if (lat != null && lon != null)
-                    Text('${lat.toStringAsFixed(6)}, ${lon.toStringAsFixed(6)}')
-                  else
-                    const Text('No embedded GPS location'),
-                ],
-              ),
-        actions: [
-          if (lat != null && lon != null)
-            TextButton(
-              onPressed: () => showMapZoomPopup(
-                context,
-                lat: lat,
-                lon: lon,
-                heading: 0,
-                kind: settings.mapKind,
-                initialZoom: settings.mapZoom,
-              ),
-              child: const Text('Map'),
-            ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _delete() async {
-    if (_files.isEmpty || _deleting) return;
-    final file = _files[_currentPage];
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Palette.ink2,
-        title: Text(
-          'Delete photo?',
-          style: AppText.bodyHi.copyWith(color: Palette.textHi),
-        ),
-        content: Text(
-          'Removes this photo from the app and deletes its linked device gallery copy, if present.',
-          style: AppText.caption.copyWith(color: Palette.textMid),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text('Cancel', style: TextStyle(color: Palette.textMid)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text('Delete', style: TextStyle(color: Palette.danger)),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-    final onDeleted = widget.onDeleted;
-    setState(() => _deleting = true);
-    try {
-      await CaptureService.instance.deleteCapture(file);
-      if (mounted) {
-        setState(() {
-          _files.remove(file);
-          if (_currentPage >= _files.length && _currentPage > 0) {
-            _currentPage = _files.length - 1;
-          }
-        });
-        if (_files.isEmpty) {
-          widget.onClose();
-        } else {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted && _pageController.hasClients) {
-              _pageController.jumpToPage(_currentPage);
-            }
-          });
-        }
-      }
-      await onDeleted();
-    } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not finish deleting the photo. Try again.'),
-        ),
-      );
-    } finally {
-      if (mounted) setState(() => _deleting = false);
-    }
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final mq = MediaQuery.of(context);
-    final topPad = mq.padding.top;
-    return BlockSemantics(
-      child: ColoredBox(
-        color: Palette.ink,
-        child: Stack(
-          children: [
-            // Swipeable images or loading fallback
-            Positioned.fill(
-              child: _loading
-                  ? Center(
-                      child: Image.memory(
-                        widget.latestBytes,
-                        fit: BoxFit.contain,
-                      ),
-                    )
-                  : _files.isEmpty
-                  ? Center(
-                      child: Image.memory(
-                        widget.latestBytes,
-                        fit: BoxFit.contain,
-                      ),
-                    )
-                  : PageView.builder(
-                      controller: _pageController,
-                      physics: _zoomed || _deleting
-                          ? const NeverScrollableScrollPhysics()
-                          : const PageScrollPhysics(
-                              parent: BouncingScrollPhysics(),
-                            ),
-                      itemCount: _files.length,
-                      onPageChanged: (idx) {
-                        setState(() {
-                          _currentPage = idx;
-                          _zoomed = false;
-                        });
-                        _prefetchNeighbors(idx);
-                      },
-                      itemBuilder: (context, index) {
-                        final file = _files[index];
-                        return _ZoomableGalleryPage(
-                          key: ValueKey(file.path),
-                          file: file,
-                          onZoomChanged: (zoomed) {
-                            if (_zoomed != zoomed && mounted) {
-                              setState(() => _zoomed = zoomed);
-                            }
-                          },
-                        );
-                      },
-                    ),
-            ),
-            // Top bar: back (left) · share (right)
-            Positioned(
-              top: topPad + 8,
-              left: Insets.md,
-              right: Insets.md,
-              child: Row(
-                children: [
-                  GlassIconButton(
-                    icon: Icons.arrow_back_ios_new,
-                    label: 'Close photo viewer',
-                    onTap: widget.onClose,
-                    blur: true,
-                  ),
-                  const Spacer(),
-                  if (!_loading && _files.isNotEmpty)
-                    GlassIconButton(
-                      icon: Icons.info_outline,
-                      label: 'Photo details',
-                      onTap: _deleting ? null : _showMetadata,
-                      blur: true,
-                    ),
-                  if (!_loading && _files.isNotEmpty)
-                    GlassIconButton(
-                      icon: Icons.share_outlined,
-                      label: 'Share photo',
-                      onTap: _share,
-                      blur: true,
-                    ),
-                ],
-              ),
-            ),
-            // Bottom bar: library (left) · delete (right)
-            Positioned(
-              left: Insets.md,
-              right: Insets.md,
-              bottom: mq.padding.bottom + 16,
-              child: Row(
-                children: [
-                  GlassIconButton(
-                    icon: Icons.photo_library_outlined,
-                    label: 'Open device gallery',
-                    onTap: widget.onOpenGallery,
-                    blur: true,
-                  ),
-                  if (Platform.isAndroid)
-                    GlassIconButton(
-                      icon: Icons.video_library_outlined,
-                      label: 'Open video library',
-                      onTap: widget.onOpenVideos,
-                      blur: true,
-                    ),
-                  if (!_loading && _files.isNotEmpty)
-                    GlassIconButton(
-                      icon: Icons.compare_outlined,
-                      label: 'Compare original photo',
-                      onTap: _deleting ? null : _comparePhoto,
-                      blur: true,
-                    ),
-                  const Spacer(),
-                  if (!_loading && _files.isNotEmpty)
-                    GlassIconButton(
-                      icon: Icons.delete_outline,
-                      label: 'Delete photo',
-                      onTap: _deleting ? null : _delete,
-                      blur: true,
-                    ),
-                ],
-              ),
-            ),
-            // Page Indicator at the top center
-            if (!_loading && _files.isNotEmpty)
-              Positioned(
-                top: topPad + 14,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: IgnorePointer(
-                    child: GlassSurface(
-                      radius: Corners.pill,
-                      blur: Blurs.chip,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 6,
-                      ),
-                      child: Text(
-                        '${_currentPage + 1} of ${_files.length}',
-                        style: AppText.caption.copyWith(
-                          color: Palette.textHi,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ), // Stack
-      ), // ColoredBox
-    ); // PopScope
-  }
-}
-
-class _ZoomableGalleryPage extends StatefulWidget {
-  final File file;
-  final ValueChanged<bool> onZoomChanged;
-
-  const _ZoomableGalleryPage({
-    super.key,
-    required this.file,
-    required this.onZoomChanged,
-  });
-
-  @override
-  State<_ZoomableGalleryPage> createState() => _ZoomableGalleryPageState();
-}
-
-class _ZoomableGalleryPageState extends State<_ZoomableGalleryPage>
-    with SingleTickerProviderStateMixin {
-  static const double _doubleTapScale = 2.6;
-  late final TransformationController _transform = TransformationController();
-  // Single long-lived controller re-used for every zoom/snap animation.
-  // Avoids recreating it mid-callback (caused "multiple tickers" with SingleTickerProviderStateMixin).
-  late final AnimationController _animCtrl = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 220),
-  );
-  // Tracked so we can surgically remove the listener before reset(),
-  // preventing the old CurvedAnimation from firing its stale listener.
-  Animation<Matrix4>? _anim;
-  VoidCallback? _animListener;
-  TapDownDetails? _doubleTapDetails;
-  bool _isZoomed = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _transform.addListener(_reportZoom);
-  }
-
-  void _reportZoom() {
-    final zoomed = _transform.value.getMaxScaleOnAxis() > 1.02;
-    if (zoomed != _isZoomed) {
-      setState(() => _isZoomed = zoomed);
-      widget.onZoomChanged(zoomed);
-    }
-  }
-
-  void _animateTo(Matrix4 target) {
-    _animCtrl.stop();
-    // Remove the old listener before reset so the old CurvedAnimation can't
-    // fire and snap the transform back to its old start position.
-    if (_animListener != null) {
-      _anim?.removeListener(_animListener!);
-      _animListener = null;
-      _anim = null;
-    }
-
-    final begin = _transform.value; // captured after stop, before reset
-    _animCtrl.reset();
-
-    _anim = Matrix4Tween(
-      begin: begin,
-      end: target,
-    ).animate(CurvedAnimation(parent: _animCtrl, curve: Curves.easeOutCubic));
-    _animListener = () => _transform.value = _anim!.value;
-    _anim!.addListener(_animListener!);
-
-    _animCtrl.forward().whenComplete(() {
-      _anim?.removeListener(_animListener!);
-      _anim = null;
-      _animListener = null;
-    });
-  }
-
-  void _handleDoubleTap() {
-    final currentScale = _transform.value.getMaxScaleOnAxis();
-    if (currentScale > 1.02) {
-      _animateTo(Matrix4.identity());
-      return;
-    }
-    final tap = _doubleTapDetails?.localPosition ?? Offset.zero;
-    final target = Matrix4.identity()
-      ..translateByDouble(
-        -tap.dx * (_doubleTapScale - 1),
-        -tap.dy * (_doubleTapScale - 1),
-        0,
-        1,
-      )
-      ..scaleByDouble(_doubleTapScale, _doubleTapScale, 1, 1);
-    _animateTo(target);
-  }
-
-  void _onInteractionEnd(ScaleEndDetails details) {
-    if (_transform.value.getMaxScaleOnAxis() <= 1.02) {
-      _animateTo(Matrix4.identity());
-    }
-  }
-
-  @override
-  void dispose() {
-    _anim?.removeListener(_animListener!);
-    _animCtrl.dispose();
-    _transform.removeListener(_reportZoom);
-    _transform.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Decode the photo down to the device's pixel width rather than its full
-    // sensor resolution — a multi-MB capture decodes ~8x smaller, keeping the
-    // swipe viewer smooth and memory bounded. Off-screen pages are no longer
-    // kept alive, so their bitmaps are released as you scroll away.
-    final mq = MediaQuery.of(context);
-    final cacheWidth = (mq.size.width * mq.devicePixelRatio).round();
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onDoubleTapDown: (details) => _doubleTapDetails = details,
-      onDoubleTap: _handleDoubleTap,
-      child: InteractiveViewer(
-        transformationController: _transform,
-        minScale: 1.0,
-        maxScale: 5.5,
-        // Zero margin: image cannot be panned beyond its own edges.
-        boundaryMargin: EdgeInsets.zero,
-        clipBehavior: Clip.hardEdge,
-        // Panning is disabled at 1x; single-finger swipes then pass through
-        // to the parent PageView for image navigation.
-        panEnabled: _isZoomed,
-        scaleEnabled: true,
-        // Higher friction = less runaway momentum after a fast pan.
-        interactionEndFrictionCoefficient: 0.0005,
-        onInteractionEnd: _onInteractionEnd,
-        child: RepaintBoundary(
-          child: Center(
-            child: Image.file(
-              widget.file,
-              fit: BoxFit.contain,
-              gaplessPlayback: true,
-              filterQuality: FilterQuality.medium,
-              cacheWidth: cacheWidth,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  final DateTime startedAt;
+  final bool stamp;
+  final bool keepOriginal;
+  final bool clock24;
+  final MediaLocation? location;
+  final samples = <Map<String, Object>>[];
 }
 
 // ── Viewfinder ───────────────────────────────────────────────────────────────

@@ -46,7 +46,12 @@ class MiniMap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!realMap) {
-      return _StaticMap(heading: heading, accent: accent, radius: radius, label: kind.label);
+      return _StaticMap(
+        heading: heading,
+        accent: accent,
+        radius: radius,
+        label: kind.label,
+      );
     }
     final center = LatLng(lat, lon);
     final br = BorderRadius.circular(radius);
@@ -65,12 +70,14 @@ class MiniMap extends StatelessWidget {
                 // Recreate only when the fix moves ~100 m, the style changes, or the zoom level changes,
                 // so small jitters don't trigger a tile reload/flicker.
                 key: ValueKey(
-                    '${lat.toStringAsFixed(3)},${lon.toStringAsFixed(3)},${kind.name},$zoom'),
+                  '${lat.toStringAsFixed(3)},${lon.toStringAsFixed(3)},${kind.name},$zoom',
+                ),
                 options: MapOptions(
                   initialCenter: center,
                   initialZoom: zoom,
-                  interactionOptions:
-                      const InteractionOptions(flags: InteractiveFlag.none),
+                  interactionOptions: const InteractionOptions(
+                    flags: InteractiveFlag.none,
+                  ),
                 ),
                 children: [
                   TileLayer(
@@ -117,7 +124,11 @@ class MiniMap extends StatelessWidget {
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [Color(0x33000000), Color(0x00000000), Color(0x55000000)],
+                      colors: [
+                        Color(0x33000000),
+                        Color(0x00000000),
+                        Color(0x55000000),
+                      ],
                       stops: [0, 0.5, 1],
                     ),
                   ),
@@ -137,9 +148,14 @@ class MiniMap extends StatelessWidget {
                 const Positioned(
                   left: 8,
                   bottom: 6,
-                  child: Text('100 m',
-                      style: TextStyle(
-                          fontSize: 8, color: Color(0xFFD7DEE7), fontWeight: FontWeight.w600)),
+                  child: Text(
+                    '100 m',
+                    style: TextStyle(
+                      fontSize: 8,
+                      color: Color(0xFFD7DEE7),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ],
             ],
@@ -188,7 +204,9 @@ class _LiveDot extends StatelessWidget {
       height: 7,
       decoration: BoxDecoration(
         color: color,
-        boxShadow: [BoxShadow(color: color.withValues(alpha: 0.9), blurRadius: 7)],
+        boxShadow: [
+          BoxShadow(color: color.withValues(alpha: 0.9), blurRadius: 7),
+        ],
         shape: BoxShape.circle,
       ),
     );
@@ -224,7 +242,12 @@ class _StaticMap extends StatelessWidget {
             CustomPaint(painter: _StaticMapPainter(accent)),
             Transform.rotate(
               angle: heading * math.pi / 180,
-              child: Center(child: CustomPaint(painter: _PinPainter(accent), size: const Size(28, 28))),
+              child: Center(
+                child: CustomPaint(
+                  painter: _PinPainter(accent),
+                  size: const Size(28, 28),
+                ),
+              ),
             ),
             Positioned(
               left: 5,
@@ -267,12 +290,19 @@ class _StaticMapPainter extends CustomPainter {
     final diag = Paint()
       ..color = accent.withValues(alpha: 0.18)
       ..strokeWidth = 2;
-    canvas.drawLine(Offset(0, size.height), Offset(size.width, size.height * 0.3), diag);
+    canvas.drawLine(
+      Offset(0, size.height),
+      Offset(size.width, size.height * 0.3),
+      diag,
+    );
 
     // Accuracy ring.
     final c = Offset(size.width / 2, size.height / 2);
-    canvas.drawCircle(c, size.shortestSide * 0.22,
-        Paint()..color = accent.withValues(alpha: 0.16));
+    canvas.drawCircle(
+      c,
+      size.shortestSide * 0.22,
+      Paint()..color = accent.withValues(alpha: 0.16),
+    );
     canvas.drawCircle(
       c,
       size.shortestSide * 0.22,
@@ -302,11 +332,10 @@ class _PinPainter extends CustomPainter {
     canvas.drawPath(
       cone,
       Paint()
-        ..shader = ui.Gradient.linear(
-          c,
-          Offset(c.dx, c.dy - 19),
-          [accent.withValues(alpha: 0.0), accent.withValues(alpha: 0.55)],
-        ),
+        ..shader = ui.Gradient.linear(c, Offset(c.dx, c.dy - 19), [
+          accent.withValues(alpha: 0.0),
+          accent.withValues(alpha: 0.55),
+        ]),
     );
     canvas.drawCircle(c, 5, Paint()..color = accent);
     canvas.drawCircle(
@@ -449,13 +478,15 @@ class _MapZoomPopupState extends State<_MapZoomPopup> {
                         children: [
                           TileLayer(
                             urlTemplate: widget.kind.tileUrl,
-                            userAgentPackageName: 'com.gpscamera.gps_camera_next',
+                            userAgentPackageName:
+                                'com.gpscamera.gps_camera_next',
                             tileDimension: 256,
                           ),
                           if (widget.kind.overlayUrl != null)
                             TileLayer(
                               urlTemplate: widget.kind.overlayUrl!,
-                              userAgentPackageName: 'com.gpscamera.gps_camera_next',
+                              userAgentPackageName:
+                                  'com.gpscamera.gps_camera_next',
                               tileDimension: 256,
                             ),
                           CircleLayer(
@@ -464,7 +495,9 @@ class _MapZoomPopupState extends State<_MapZoomPopup> {
                                 point: center,
                                 radius: 20,
                                 color: Palette.teal.withValues(alpha: 0.14),
-                                borderColor: Palette.teal.withValues(alpha: 0.75),
+                                borderColor: Palette.teal.withValues(
+                                  alpha: 0.75,
+                                ),
                                 borderStrokeWidth: 1.2,
                               ),
                             ],
@@ -477,7 +510,9 @@ class _MapZoomPopupState extends State<_MapZoomPopup> {
                                 height: 36,
                                 child: Transform.rotate(
                                   angle: widget.heading * math.pi / 180,
-                                  child: CustomPaint(painter: _PinPainter(Palette.teal)),
+                                  child: CustomPaint(
+                                    painter: _PinPainter(Palette.teal),
+                                  ),
                                 ),
                               ),
                             ],
@@ -494,7 +529,10 @@ class _MapZoomPopupState extends State<_MapZoomPopup> {
                             blur: Blurs.chip,
                             fill: const Color(0x99070B14),
                             stroke: Palette.glassStroke,
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
                             child: Text(
                               '${_currentZoom.toStringAsFixed(1)}x',
                               style: AppText.mono.copyWith(
@@ -523,11 +561,17 @@ class _MapZoomPopupState extends State<_MapZoomPopup> {
                         bottom: 10,
                         child: IgnorePointer(
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 5,
+                            ),
                             decoration: BoxDecoration(
                               color: const Color(0x99070B14),
                               borderRadius: BorderRadius.circular(Corners.sm),
-                              border: Border.all(color: Palette.glassStrokeSoft, width: 0.6),
+                              border: Border.all(
+                                color: Palette.glassStrokeSoft,
+                                width: 0.6,
+                              ),
                             ),
                             child: Text(
                               'Double-tap to reset',
@@ -547,9 +591,19 @@ class _MapZoomPopupState extends State<_MapZoomPopup> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            GlassIconButton(icon: Icons.add, label: 'Zoom map in', size: 48, onTap: _zoomIn),
+                            GlassIconButton(
+                              icon: Icons.add,
+                              label: 'Zoom map in',
+                              size: 48,
+                              onTap: _zoomIn,
+                            ),
                             const SizedBox(height: 8),
-                            GlassIconButton(icon: Icons.remove, label: 'Zoom map out', size: 48, onTap: _zoomOut),
+                            GlassIconButton(
+                              icon: Icons.remove,
+                              label: 'Zoom map out',
+                              size: 48,
+                              onTap: _zoomOut,
+                            ),
                           ],
                         ),
                       ),

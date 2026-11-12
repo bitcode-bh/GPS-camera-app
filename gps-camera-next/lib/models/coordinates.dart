@@ -7,12 +7,12 @@ enum CoordFormat { decimal, dms, utm, mgrs, plusCode }
 
 extension CoordFormatX on CoordFormat {
   String get label => switch (this) {
-        CoordFormat.decimal => 'Decimal',
-        CoordFormat.dms => 'DMS',
-        CoordFormat.utm => 'UTM',
-        CoordFormat.mgrs => 'MGRS',
-        CoordFormat.plusCode => 'Plus Code',
-      };
+    CoordFormat.decimal => 'Decimal',
+    CoordFormat.dms => 'DMS',
+    CoordFormat.utm => 'UTM',
+    CoordFormat.mgrs => 'MGRS',
+    CoordFormat.plusCode => 'Plus Code',
+  };
 }
 
 /// Converts a lat/lon pair into the various coordinate representations.
@@ -61,7 +61,9 @@ class Coordinates {
 
   // ── UTM / MGRS (WGS-84) ──────────────────────────────────────────────
   static ({int zone, String band, double easting, double northing}) _utm(
-      double lat, double lon) {
+    double lat,
+    double lon,
+  ) {
     const a = 6378137.0; // WGS-84 semi-major axis
     const f = 1 / 298.257223563;
     final e2 = f * (2 - f);
@@ -79,14 +81,17 @@ class Coordinates {
     final c = ep2 * math.cos(latRad) * math.cos(latRad);
     final aa = math.cos(latRad) * (lonRad - lonOriginRad);
 
-    final m = a *
+    final m =
+        a *
         ((1 - e2 / 4 - 3 * e2 * e2 / 64 - 5 * e2 * e2 * e2 / 256) * latRad -
             (3 * e2 / 8 + 3 * e2 * e2 / 32 + 45 * e2 * e2 * e2 / 1024) *
                 math.sin(2 * latRad) +
-            (15 * e2 * e2 / 256 + 45 * e2 * e2 * e2 / 1024) * math.sin(4 * latRad) -
+            (15 * e2 * e2 / 256 + 45 * e2 * e2 * e2 / 1024) *
+                math.sin(4 * latRad) -
             (35 * e2 * e2 * e2 / 3072) * math.sin(6 * latRad));
 
-    var easting = k0 *
+    var easting =
+        k0 *
             n *
             (aa +
                 (1 - t + c) * aa * aa * aa / 6 +
@@ -99,7 +104,8 @@ class Coordinates {
                     120) +
         500000.0;
 
-    var northing = k0 *
+    var northing =
+        k0 *
         (m +
             n *
                 math.tan(latRad) *

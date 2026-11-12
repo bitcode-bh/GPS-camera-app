@@ -120,7 +120,11 @@ class GlassSwitch extends StatelessWidget {
             decoration: BoxDecoration(
               color: value ? Palette.textHi : Palette.textMid,
               boxShadow: const [
-                BoxShadow(color: Colors.black38, blurRadius: 4, offset: Offset(0, 1)),
+                BoxShadow(
+                  color: Colors.black38,
+                  blurRadius: 4,
+                  offset: Offset(0, 1),
+                ),
               ],
               shape: BoxShape.circle,
             ),
@@ -157,7 +161,11 @@ class CycleTile extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 20, color: active ? Palette.accentMuted : Palette.textMid),
+            Icon(
+              icon,
+              size: 20,
+              color: active ? Palette.accentMuted : Palette.textMid,
+            ),
             const SizedBox(height: 5),
             Text(
               label,

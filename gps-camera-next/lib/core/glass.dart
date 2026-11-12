@@ -57,12 +57,7 @@ class GlassSurface extends StatelessWidget {
     Widget surface = ClipRRect(
       borderRadius: br,
       child: refract && StashGlass.supported
-          ? StashGlass(
-              radius: radius,
-              tint: fill,
-              menu: _menu,
-              child: content,
-            )
+          ? StashGlass(radius: radius, tint: fill, menu: _menu, child: content)
           : BackdropFilter(
               filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
               child: DecoratedBox(
@@ -83,14 +78,15 @@ class GlassSurface extends StatelessWidget {
     );
 
     if (borderGradient != null) {
-      surface = _GradientBorder(radius: radius, gradient: borderGradient!, child: surface);
+      surface = _GradientBorder(
+        radius: radius,
+        gradient: borderGradient!,
+        child: surface,
+      );
     }
     if (shadow != null) {
       surface = DecoratedBox(
-        decoration: BoxDecoration(
-          boxShadow: shadow,
-          borderRadius: br,
-        ),
+        decoration: BoxDecoration(boxShadow: shadow, borderRadius: br),
         child: surface,
       );
     }
@@ -223,7 +219,9 @@ class GlassIconButton extends StatelessWidget {
       body = GlassSurface(
         radius: size,
         blur: Blurs.chip,
-        stroke: hasBorder ? Palette.glassStroke : Colors.white.withValues(alpha: 0.15),
+        stroke: hasBorder
+            ? Palette.glassStroke
+            : Colors.white.withValues(alpha: 0.15),
         child: inner,
       );
     } else {
@@ -239,7 +237,9 @@ class GlassIconButton extends StatelessWidget {
               : null,
           shape: BoxShape.circle,
           border: Border.all(
-            color: hasBorder ? Palette.glassStroke : Colors.white.withValues(alpha: 0.15),
+            color: hasBorder
+                ? Palette.glassStroke
+                : Colors.white.withValues(alpha: 0.15),
             width: 1,
           ),
         ),
@@ -268,7 +268,11 @@ class _GradientBorder extends StatelessWidget {
   final double radius;
   final Gradient gradient;
   final Widget child;
-  const _GradientBorder({required this.radius, required this.gradient, required this.child});
+  const _GradientBorder({
+    required this.radius,
+    required this.gradient,
+    required this.child,
+  });
 
   @override
   Widget build(BuildContext context) {

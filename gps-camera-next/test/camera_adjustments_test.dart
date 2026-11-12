@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gps_camera_next/screens/camera/camera_screen.dart';
 import 'package:gps_camera_next/screens/camera/widgets/camera_design.dart';
 import 'package:gps_camera_next/screens/camera/widgets/camera_layer.dart';
+import 'package:gps_camera_next/screens/library/library_screen.dart';
 import 'package:gps_camera_next/widgets/geo_stamp.dart';
 
 class _Camera extends CameraPlatform {
@@ -179,25 +180,24 @@ void main() {
           () => messenger.setMockMethodCallHandler(adjustments, null),
         );
 
-        const gallery = MethodChannel('com.gpscamera.gps_camera_next/gallery');
-        int? openedVideo;
-        messenger.setMockMethodCallHandler(gallery, (call) async {
-          if (call.method == 'listVideos') {
-            return [
+        // The Library reads MediaStore through this channel.
+        const library = MethodChannel('com.gpscamera.gps_camera_next/library');
+        messenger.setMockMethodCallHandler(library, (call) async {
+          return switch (call.method) {
+            'ensureAccess' => 'granted',
+            'list' => [
               {
                 'id': 42,
-                'name': 'stamped_123.mp4',
+                'kind': 'video',
+                'name': 'GPS_stamped_123.mp4',
+                'takenMs': 1794308733000,
                 'durationMs': 4200,
-                'addedSeconds': 1794308733,
               },
-            ];
-          }
-          if (call.method == 'openVideo') {
-            openedVideo = call.arguments['id'] as int;
-          }
-          return null;
+            ],
+            _ => null,
+          };
         });
-        addTearDown(() => messenger.setMockMethodCallHandler(gallery, null));
+        addTearDown(() => messenger.setMockMethodCallHandler(library, null));
 
         await tester.pumpWidget(const MaterialApp(home: CameraScreen()));
         await tester.pumpAndSettle();
@@ -541,20 +541,22 @@ void main() {
         await tester.tap(control('^Torch off'));
         await tester.pumpAndSettle();
         expect(camera.flashes.last, FlashMode.torch);
+        // The Library covers the camera, which is released until it closes.
         await tester.tap(control('^Open video library'));
         await tester.pumpAndSettle();
-        expect(find.text('Stamped video'), findsOneWidget);
-        await tester.tap(find.text('Stamped video'));
+        expect(find.byType(LibraryScreen), findsOneWidget);
+        expect(control(r'^Video, 0:04'), findsOneWidget);
+        await tester.tap(find.byTooltip('Back to camera'));
         await tester.pumpAndSettle();
-        expect(openedVideo, 42);
-        await tester.tap(find.byTooltip('Close videos'));
-        await tester.pumpAndSettle();
+        expect(find.byType(LibraryScreen), findsNothing);
+        expect(camera.sessions, 2);
         expect(control('^Start recording'), findsOneWidget);
         expect(control(r'^Pro$'), findsNothing);
         await tester.tap(control('^Switch camera'));
         await tester.pumpAndSettle();
         expect(camera.lenses, [
           CameraLensDirection.back,
+          CameraLensDirection.back, // Reopened after the Library closed.
           CameraLensDirection.front,
         ]);
         expect(tester.takeException(), isNull);

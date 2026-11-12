@@ -11,7 +11,9 @@ class CameraControlBar extends StatelessWidget {
   final CameraMode mode;
   final double iconTurns;
   final bool busy;
-  final Uint8List? lastShot;
+
+  /// Thumbnail of the newest Library item, when there is one.
+  final ImageProvider? lastShot;
   final bool recording;
   final bool lockCameraChanges;
   final ValueChanged<CameraMode> onMode;
@@ -87,19 +89,23 @@ class CameraControlBar extends StatelessWidget {
     );
     final gallery = CameraAction(
       label: video ? 'Open video library' : 'Open gallery',
-      iconTurns: video || lastShot == null ? iconTurns : 0,
+      iconTurns: lastShot == null ? iconTurns : 0,
       icon: video ? Icons.video_library_outlined : Icons.photo_library_outlined,
       onTap: onGallery,
-      child: video || lastShot == null
+      child: lastShot == null
           ? null
           : ClipOval(
-              child: Image.memory(
-                lastShot!,
+              child: Image(
+                image: lastShot!,
                 width: 48,
                 height: 48,
                 fit: BoxFit.cover,
                 gaplessPlayback: true,
-                cacheWidth: 96,
+                errorBuilder: (_, _, _) => Icon(
+                  video
+                      ? Icons.video_library_outlined
+                      : Icons.photo_library_outlined,
+                ),
               ),
             ),
     );
