@@ -33,13 +33,7 @@ class _PulseDotState extends State<PulseDot>
     final dot = Container(
       width: widget.size,
       height: widget.size,
-      decoration: BoxDecoration(
-        color: widget.color,
-        boxShadow: [
-          BoxShadow(color: widget.color.withValues(alpha: 0.9), blurRadius: 8),
-        ],
-        shape: BoxShape.circle,
-      ),
+      decoration: BoxDecoration(color: widget.color, shape: BoxShape.circle),
     );
     if (!widget.pulse) return dot;
     return FadeTransition(

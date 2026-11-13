@@ -1,8 +1,8 @@
 import 'dart:math' as math;
-import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/design/palette.dart';
 import '../../../core/widgets/pressable.dart';
 
 const cameraYellow = Color(0xFFFFDB55);
@@ -27,41 +27,15 @@ class CameraGlass extends StatelessWidget {
     this.padding = EdgeInsets.zero,
   });
 
+  /// A solid panel: no blur, gradient or sheen.
   @override
-  Widget build(BuildContext context) => ClipRRect(
-    borderRadius: BorderRadius.circular(radius),
-    child: BackdropFilter(
-      filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(radius),
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            stops: [0, .3, .72],
-            colors: [Color(0x778A8989), Color(0x99373632), Color(0xE8202020)],
-          ),
-          border: Border.all(color: const Color(0x66FFFFFF)),
-        ),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(radius),
-            gradient: const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              stops: [0, .012, .05, 1],
-              colors: [
-                Color(0x55FFFFFF),
-                Color(0x10FFFFFF),
-                Colors.transparent,
-                Colors.transparent,
-              ],
-            ),
-          ),
-          child: Padding(padding: padding, child: child),
-        ),
-      ),
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      color: Palette.surfaceSolid,
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: Palette.strokeSolid),
     ),
+    child: Padding(padding: padding, child: child),
   );
 }
 

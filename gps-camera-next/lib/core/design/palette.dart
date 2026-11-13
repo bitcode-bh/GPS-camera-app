@@ -8,6 +8,10 @@ class Palette {
   static const Color ink = Color(0xFF19151B); // app background base
   static const Color ink2 = Color(0xFF221D25); // lifted surface
 
+  /// Notices, menus and chips: one neutral, opaque surface. No blur, no tint.
+  static const Color surfaceSolid = Color(0xFF1C1C1E);
+  static const Color strokeSolid = Color(0x1FFFFFFF);
+
   // ── Accent ─────────────────────────────
   static const Color teal = Color(0xFFA9B8FF);
   static const Color cyan = Color(0xFFA9B8FF);

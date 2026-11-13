@@ -110,7 +110,7 @@ class MediaGridState extends State<MediaGrid>
   final _pointers = <int, Offset>{};
   late final _settle = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 220),
+    duration: const Duration(milliseconds: 280),
   )..addListener(_onSettleTick);
 
   List<int> _levels = const [2, 3, 4, 6];
@@ -128,7 +128,7 @@ class MediaGridState extends State<MediaGrid>
   int _settleTo = 3;
 
   bool get _zooming => _pinching || _settle.isAnimating;
-  int get _renderColumns => GridDensity.renderLevel(_levels, _effective);
+  int _thumbnailSize = 256; // Fixed during a pinch, so no tile reloads.
 
   GridLayout _layout(int columns) => GridLayout(
     width: _width,
@@ -152,7 +152,7 @@ class MediaGridState extends State<MediaGrid>
   /// Scrolls just far enough to show [index], e.g. after leaving the viewer.
   void ensureVisible(int index) {
     if (!_scroll.hasClients || _width <= 0 || _zooming) return;
-    final layout = _layout(_renderColumns);
+    final layout = _layout(_columns ?? _levels[1]);
     final top = layout.topPadding + (index ~/ layout.columns) * layout.pitch;
     final position = _scroll.position;
     final visibleTop = position.pixels + widget.topPadding;
@@ -200,7 +200,7 @@ class MediaGridState extends State<MediaGrid>
     _startSpan = math.max(_span, 1);
     _startEffective = _effective;
     // Scaling pivots on the focal point, so the content under it is exact.
-    final anchor = _layout(_renderColumns).anchorAt(
+    final anchor = _layout(_columns!).anchorAt(
       Offset(_focal.dx, _scroll.offset + _focal.dy),
       widget.items.length,
     );
@@ -232,31 +232,71 @@ class MediaGridState extends State<MediaGrid>
   }
 
   void _onSettleTick() {
+    // Interpolate in log space: equal finger travel, equal visual change.
     final t = Curves.easeOutCubic.transform(_settle.value);
-    _apply(_settleFrom + (_settleTo - _settleFrom) * t);
-    if (_settle.value == 1 && _columns != _settleTo) {
-      _columns = _settleTo;
-      widget.onColumnsChanged(_settleTo);
-    }
+    _apply(
+      math.exp(
+        math.log(_settleFrom) +
+            (math.log(_settleTo) - math.log(_settleFrom)) * t,
+      ),
+    );
+    if (_settle.value == 1) _commit(_settleTo);
   }
 
-  /// Draw [effective] columns while keeping the anchored item under the focal
-  /// point, whichever level is rendered underneath.
   void _apply(double effective) {
     if (!mounted) return;
     setState(() => _effective = effective);
-    if (!_scroll.hasClients) return;
-    final layout = _layout(_renderColumns);
-    final maxScroll = math.max(
+  }
+
+  /// Ends a zoom on [columns], with the anchored item where the fingers were.
+  void _commit(int columns) {
+    if (!mounted) return;
+    final changed = _columns != columns;
+    setState(() {
+      _columns = columns;
+      _effective = columns.toDouble();
+    });
+    if (changed) widget.onColumnsChanged(columns);
+    if (_scroll.hasClients) {
+      _scroll.jumpTo(_offsetFor(_layout(columns)));
+    }
+  }
+
+  /// Scroll offset that keeps the anchored item under the focal point.
+  double _offsetFor(GridLayout layout) {
+    final max = math.max(
       0.0,
       layout.contentHeight(widget.items.length) +
           widget.bottomPadding -
           _viewportHeight,
     );
-    _scroll.jumpTo(
-      layout
-          .scrollFor(_anchorIndex, _anchorFraction, _focal.dy)
-          .clamp(0.0, maxScroll),
+    return layout
+        .scrollFor(_anchorIndex, _anchorFraction, _focal.dy)
+        .clamp(0.0, max);
+  }
+
+  /// One density level, scaled about the fingers to [_effective] columns.
+  Widget _zoomLayer(int columns, double opacity, bool compact) {
+    final layout = _layout(columns);
+    final scale = columns / _effective;
+    return Opacity(
+      opacity: opacity.clamp(0.0, 1.0),
+      child: Transform(
+        transform: Matrix4.identity()
+          ..translateByDouble(_focal.dx, _focal.dy, 0, 1)
+          ..scaleByDouble(scale, scale, 1, 1)
+          ..translateByDouble(-_focal.dx, -_focal.dy, 0, 1),
+        child: _GridFrame(
+          layout: layout,
+          offset: _offsetFor(layout),
+          // Rows the scaled layer can show inside the viewport.
+          top: _focal.dy - _focal.dy / scale,
+          bottom: _focal.dy + (_viewportHeight - _focal.dy) / scale,
+          items: widget.items,
+          thumbnailSize: _thumbnailSize,
+          compact: compact,
+        ),
+      ),
     );
   }
 
@@ -276,51 +316,129 @@ class MediaGridState extends State<MediaGrid>
         if (!_zooming) _effective = _columns!.toDouble();
       }
       _viewportHeight = constraints.maxHeight;
-      final columns = _renderColumns;
-      final scale = columns / _effective;
+      final columns = _columns!;
       final pixelRatio = MediaQuery.devicePixelRatioOf(context);
-      final thumbnailSize = _layout(columns).cell * pixelRatio > 190
-          ? 512
-          : 256;
+      if (!_zooming) {
+        _thumbnailSize = _layout(columns).cell * pixelRatio > 190 ? 512 : 256;
+      }
+      final thumbnailSize = _thumbnailSize;
+      // Mid-pinch, the two neighbouring levels cross-fade, so the grid morphs
+      // instead of jumping when the column count changes.
+      Widget? zoom;
+      if (_zooming) {
+        var sparse = levels.first;
+        for (final level in levels) {
+          if (level <= _effective + 1e-6) sparse = level;
+        }
+        final dense = GridDensity.renderLevel(levels, _effective);
+        final t = dense == sparse
+            ? 1.0
+            : (math.log(_effective) - math.log(sparse)) /
+                  (math.log(dense) - math.log(sparse));
+        zoom = Stack(
+          fit: StackFit.expand,
+          children: [
+            if (dense != sparse) _zoomLayer(sparse, 1, sparse >= levels.last),
+            _zoomLayer(dense, t, dense >= levels.last),
+          ],
+        );
+      }
       return Listener(
         onPointerDown: _pointerDown,
         onPointerMove: _pointerMove,
         onPointerUp: _pointerEnd,
         onPointerCancel: _pointerEnd,
         child: ClipRect(
-          child: Transform(
-            transform: Matrix4.identity()
-              ..translateByDouble(_focal.dx, _focal.dy, 0, 1)
-              ..scaleByDouble(scale, scale, 1, 1)
-              ..translateByDouble(-_focal.dx, -_focal.dy, 0, 1),
-            child: GridView.builder(
-              controller: _scroll,
-              physics: _zooming
-                  ? const NeverScrollableScrollPhysics()
-                  : const AlwaysScrollableScrollPhysics(),
-              padding: EdgeInsets.only(
-                top: widget.topPadding,
-                bottom: widget.bottomPadding,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Kept alive while zooming, so its scroll position survives.
+              Offstage(
+                offstage: zoom != null,
+                child: GridView.builder(
+                  controller: _scroll,
+                  physics: _zooming
+                      ? const NeverScrollableScrollPhysics()
+                      : const AlwaysScrollableScrollPhysics(),
+                  padding: EdgeInsets.only(
+                    top: widget.topPadding,
+                    bottom: widget.bottomPadding,
+                  ),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: columns,
+                    mainAxisSpacing: GridLayout.spacing,
+                    crossAxisSpacing: GridLayout.spacing,
+                  ),
+                  itemCount: widget.items.length,
+                  itemBuilder: (context, index) => MediaTile(
+                    key: ValueKey(widget.items[index].key),
+                    item: widget.items[index],
+                    thumbnailSize: thumbnailSize,
+                    compact: columns >= levels.last,
+                    onTap: _zooming ? null : () => widget.onOpen(index),
+                  ),
+                ),
               ),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: columns,
-                mainAxisSpacing: GridLayout.spacing,
-                crossAxisSpacing: GridLayout.spacing,
-              ),
-              itemCount: widget.items.length,
-              itemBuilder: (context, index) => MediaTile(
-                key: ValueKey(widget.items[index].key),
-                item: widget.items[index],
-                thumbnailSize: thumbnailSize,
-                compact: columns >= levels.last,
-                onTap: _zooming ? null : () => widget.onOpen(index),
-              ),
-            ),
+              ?zoom,
+            ],
           ),
         ),
       );
     },
   );
+}
+
+/// The tiles of one layout that fall between [top] and [bottom] of the
+/// viewport, drawn without a scroll view. Used only while zooming.
+class _GridFrame extends StatelessWidget {
+  const _GridFrame({
+    required this.layout,
+    required this.offset,
+    required this.top,
+    required this.bottom,
+    required this.items,
+    required this.thumbnailSize,
+    required this.compact,
+  });
+
+  final GridLayout layout;
+  final double offset;
+  final double top;
+  final double bottom;
+  final List<MediaItem> items;
+  final int thumbnailSize;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final columns = layout.columns;
+    final pitch = layout.pitch;
+    final firstRow = math.max(
+      0,
+      ((offset + top - layout.topPadding) / pitch).floor(),
+    );
+    final lastRow = ((offset + bottom - layout.topPadding) / pitch).ceil();
+    final end = math.min(items.length, (lastRow + 1) * columns);
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        for (var index = firstRow * columns; index < end; index++)
+          Positioned(
+            key: ValueKey(items[index].key),
+            left: (index % columns) * pitch,
+            top: layout.topPadding + (index ~/ columns) * pitch - offset,
+            width: layout.cell,
+            height: layout.cell,
+            child: MediaTile(
+              item: items[index],
+              thumbnailSize: thumbnailSize,
+              compact: compact,
+              hero: false,
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 class MediaTile extends StatelessWidget {
@@ -330,12 +448,14 @@ class MediaTile extends StatelessWidget {
     required this.thumbnailSize,
     this.compact = false,
     this.onTap,
+    this.hero = true,
   });
 
   final MediaItem item;
   final int thumbnailSize;
   final bool compact;
   final VoidCallback? onTap;
+  final bool hero;
 
   static final _date = DateFormat('d MMM yyyy, HH:mm');
 
@@ -353,24 +473,22 @@ class MediaTile extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             const ColoredBox(color: Color(0xFF1C1C1E)),
-            Hero(
-              tag: item.key,
-              child: Image(
-                image: MediaThumbnail(item, size: thumbnailSize),
-                fit: BoxFit.cover,
-                gaplessPlayback: true,
-                frameBuilder: (context, child, frame, sync) => sync
-                    ? child
-                    : AnimatedOpacity(
-                        opacity: frame == null ? 0 : 1,
-                        duration: const Duration(milliseconds: 120),
-                        child: child,
-                      ),
-                errorBuilder: (context, error, stack) => const Center(
-                  child: Icon(
-                    Icons.broken_image_outlined,
-                    color: Colors.white24,
-                    size: 20,
+            HeroMode(
+              enabled: hero,
+              child: Hero(
+                tag: item.key,
+                // Gapless: a sharper thumbnail replaces the old one in place,
+                // with no blank frame or fade.
+                child: Image(
+                  image: MediaThumbnail(item, size: thumbnailSize),
+                  fit: BoxFit.cover,
+                  gaplessPlayback: true,
+                  errorBuilder: (context, error, stack) => const Center(
+                    child: Icon(
+                      Icons.broken_image_outlined,
+                      color: Colors.white24,
+                      size: 20,
+                    ),
                   ),
                 ),
               ),

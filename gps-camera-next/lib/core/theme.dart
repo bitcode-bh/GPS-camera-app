@@ -54,7 +54,7 @@ class AppTheme {
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(),
         elevation: 0,
-        backgroundColor: Palette.ink2,
+        backgroundColor: Palette.surfaceSolid,
         contentTextStyle: AppText.bodyHi,
         insetPadding: EdgeInsets.fromLTRB(16, 0, 16, 24),
       ),

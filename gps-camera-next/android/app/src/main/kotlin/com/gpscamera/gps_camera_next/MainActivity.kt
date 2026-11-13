@@ -58,8 +58,19 @@ class MainActivity : FlutterActivity() {
                                     if (at == null || label == null) null else at to label
                                 }.sortedBy { it.first }
                             val clock24 = call.argument<Boolean>("clock24") ?: false
+                            val frames = call.argument<List<Map<String, Any>>>("frames").orEmpty()
+                                .mapNotNull { row ->
+                                    val at = (row["atMs"] as? Number)?.toLong()
+                                    val file = (row["path"] as? String)?.let(::File)
+                                    if (at == null || file == null || !file.isFile) null else at to file
+                                }.sortedBy { it.first }
+                            val rect = call.argument<List<Number>>("stampRect")
+                                ?.map { it.toFloat() }?.takeIf { it.size == 3 }
                             runOnUiThread {
-                                VideoStamp.export(applicationContext, File(path), start, samples, clock24, result)
+                                VideoStamp.export(
+                                    applicationContext, File(path), start, samples, clock24,
+                                    frames, rect, result,
+                                )
                             }
                         }
                     }

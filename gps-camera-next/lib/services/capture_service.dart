@@ -117,6 +117,8 @@ class CaptureService {
     required DateTime startedAt,
     required List<Map<String, Object>> samples,
     required bool clock24,
+    List<Map<String, Object>> frames = const [],
+    List<double>? stampRect,
   }) async {
     try {
       return await _channel.invokeMethod<String>('stampVideo', {
@@ -124,6 +126,8 @@ class CaptureService {
         'startedAtMs': startedAt.millisecondsSinceEpoch,
         'samples': samples,
         'clock24': clock24,
+        'frames': frames,
+        'stampRect': stampRect,
       });
     } on PlatformException {
       return null;

@@ -55,6 +55,7 @@ class _CameraScreenState extends State<CameraScreen>
   final _templates = TemplateController.instance;
   final _library = MediaLibrary.instance;
   final _freezeKey = GlobalKey();
+  final _stampKey = GlobalKey(); // The stamp alone, for video frames.
   _Adjustment? _adjustment;
   int _minKelvin = 0, _maxKelvin = 0;
   int? _kelvin, _appliedKelvin;
@@ -1206,6 +1207,50 @@ class _CameraScreenState extends State<CameraScreen>
     if (job.samples.isEmpty || job.samples.last['label'] != location) {
       job.samples.add({'atMs': atMs, 'label': location});
     }
+    // ~11 m steps, so GPS jitter alone never re-renders the stamp.
+    final frameLabel = geo == null
+        ? ''
+        : '${geo.place}|${geo.lat.toStringAsFixed(4)},'
+              '${geo.lon.toStringAsFixed(4)}';
+    if (frameLabel != job.frameLabel) {
+      job.frameLabel = frameLabel;
+      job.frameDue = true;
+    }
+    if (job.frameDue &&
+        (job.lastFrameMs < 0 || atMs - job.lastFrameMs >= 10000)) {
+      job.frameDue = false;
+      job.lastFrameMs = atMs;
+      unawaited(_captureStampFrame(job, atMs));
+    }
+  }
+
+  /// Saves a picture of the stamp exactly as it is drawn on screen.
+  Future<void> _captureStampFrame(_VideoJob job, int atMs) async {
+    final stamp = _stampKey.currentContext?.findRenderObject();
+    final frame = _freezeKey.currentContext?.findRenderObject();
+    if (stamp is! RenderRepaintBoundary || frame is! RenderBox) return;
+    if (!stamp.hasSize || !frame.hasSize || frame.size.isEmpty) return;
+    try {
+      final origin = stamp.localToGlobal(Offset.zero, ancestor: frame);
+      final size = frame.size;
+      job.stampRect ??= [
+        origin.dx / size.width,
+        (size.height - origin.dy - stamp.size.height) / size.height,
+        stamp.size.width / size.width,
+      ];
+      final image = await stamp.toImage(pixelRatio: 3);
+      final png = await image.toByteData(format: ui.ImageByteFormat.png);
+      image.dispose();
+      if (png == null) return;
+      final file = File(
+        '${Directory.systemTemp.path}/stamp_'
+        '${job.startedAt.millisecondsSinceEpoch}_$atMs.png',
+      );
+      await file.writeAsBytes(png.buffer.asUint8List(), flush: true);
+      job.frames.add({'atMs': atMs, 'path': file.path});
+    } catch (_) {
+      // The text stamp is the fallback when no picture exists.
+    }
   }
 
   Future<void> _stopAndSaveVideo(CameraController cam) async {
@@ -1232,6 +1277,8 @@ class _CameraScreenState extends State<CameraScreen>
           startedAt: job.startedAt,
           samples: job.samples,
           clock24: job.clock24,
+          frames: job.frames,
+          stampRect: job.stampRect,
         );
       }
       final uri = await service.saveVideoToGallery(
@@ -1264,6 +1311,9 @@ class _CameraScreenState extends State<CameraScreen>
       _toast(message);
       await _deleteQuietly(path);
       if (stamped != null) await _deleteQuietly(stamped);
+      for (final frame in job.frames) {
+        await _deleteQuietly(frame['path']! as String);
+      }
       unawaited(_library.refresh());
     } catch (_) {
       _toast('Could not finish video export');
@@ -1867,6 +1917,7 @@ class _CameraScreenState extends State<CameraScreen>
                                     }
                                   },
                                   child: RepaintBoundary(
+                                    key: _stampKey,
                                     child: GeoStamp(
                                       geo: geo,
                                       forCapture: _showFreeze,
@@ -2040,17 +2091,26 @@ class _CameraScreenState extends State<CameraScreen>
                       child: Center(
                         child: Semantics(
                           liveRegion: true,
-                          child: Text(
-                            _notificationMsg!,
-                            textAlign: TextAlign.center,
-                            style: AppText.bodyHi.copyWith(
-                              color: Colors.white,
-                              shadows: const [
-                                Shadow(
-                                  color: Colors.black,
-                                  offset: Offset(0, 1),
+                          // A plain, solid notice that reads on any scene.
+                          child: DecoratedBox(
+                            decoration: const BoxDecoration(
+                              color: Palette.surfaceSolid,
+                              borderRadius: BorderRadius.all(
+                                Radius.circular(10),
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 8,
+                              ),
+                              child: Text(
+                                _notificationMsg!,
+                                textAlign: TextAlign.center,
+                                style: AppText.bodyHi.copyWith(
+                                  color: Colors.white,
                                 ),
-                              ],
+                              ),
                             ),
                           ),
                         ),
@@ -2190,6 +2250,14 @@ class _VideoJob {
   final bool clock24;
   final MediaLocation? location;
   final samples = <Map<String, Object>>[];
+
+  /// Pictures of the on-screen stamp, so the video carries the same stamp
+  /// as a photo. A new one is taken when the place changes.
+  final frames = <Map<String, Object>>[];
+  List<double>? stampRect; // left, bottom gap, width: fractions of the frame
+  int lastFrameMs = -1;
+  String? frameLabel;
+  bool frameDue = false;
 }
 
 // ── Viewfinder ───────────────────────────────────────────────────────────────
@@ -2347,8 +2415,6 @@ class _RecPill extends StatelessWidget {
     String two(int n) => n.toString().padLeft(2, '0');
     final t = '${two(elapsed.inMinutes)}:${two(elapsed.inSeconds % 60)}';
     return FrostedChip(
-      fill: const Color(0xCC2A0C12),
-      stroke: Palette.danger.withValues(alpha: 0.5),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       child: Row(
         mainAxisSize: MainAxisSize.min,

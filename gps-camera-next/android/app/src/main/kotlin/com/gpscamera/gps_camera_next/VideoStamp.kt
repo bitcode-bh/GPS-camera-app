@@ -1,6 +1,8 @@
 package com.gpscamera.gps_camera_next
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.net.Uri
 import android.text.SpannableString
@@ -12,7 +14,9 @@ import android.text.style.ForegroundColorSpan
 import androidx.media3.common.util.Size
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.effect.BitmapOverlay
 import androidx.media3.effect.OverlayEffect
+import androidx.media3.effect.TextureOverlay
 import androidx.media3.effect.StaticOverlaySettings
 import androidx.media3.effect.TextOverlay
 import androidx.media3.transformer.Composition
@@ -35,6 +39,8 @@ internal object VideoStamp {
         startedAtMs: Long,
         samples: List<Pair<Long, String>>,
         clock24: Boolean,
+        frames: List<Pair<Long, File>>,
+        stampRect: List<Float>?,
         result: MethodChannel.Result,
     ) {
         var pendingOutput: File? = null
@@ -86,8 +92,16 @@ internal object VideoStamp {
                     return text
                 }
             }
+            // The same stamp as a photo: pictures of the on-screen stamp, placed
+            // where it sits in the viewfinder. The text stamp is the fallback.
+            val stamp: TextureOverlay =
+                if (frames.isNotEmpty() && stampRect != null) {
+                    pictureOverlay(frames, stampRect)
+                } else {
+                    overlay
+                }
             val item = EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(source)))
-                .setEffects(Effects(emptyList(), listOf(OverlayEffect(listOf(overlay)))))
+                .setEffects(Effects(emptyList(), listOf(OverlayEffect(listOf(stamp)))))
                 .build()
             Transformer.Builder(context)
                 .addListener(object : Transformer.Listener {
@@ -109,6 +123,45 @@ internal object VideoStamp {
         } catch (error: Exception) {
             pendingOutput?.delete()
             result.error("video_stamp", "Could not start the video export", null)
+        }
+    }
+
+    private fun pictureOverlay(frames: List<Pair<Long, File>>, rect: List<Float>): BitmapOverlay {
+        val (left, bottom, width) = rect
+        val settings = StaticOverlaySettings.Builder()
+            .setOverlayFrameAnchor(-1f, -1f)
+            .setBackgroundFrameAnchor(
+                (-1f + 2f * left).coerceIn(-1f, 1f),
+                (-1f + 2f * bottom).coerceIn(-1f, 1f),
+            )
+            .build()
+        return object : BitmapOverlay() {
+            private var targetWidth = 0
+            private var shown = -1
+            private var bitmap: Bitmap? = null
+
+            override fun configure(videoSize: Size) {
+                super.configure(videoSize)
+                targetWidth = (videoSize.width * width).toInt().coerceAtLeast(1)
+            }
+
+            override fun getOverlaySettings(presentationTimeUs: Long) = settings
+
+            override fun getBitmap(presentationTimeUs: Long): Bitmap {
+                val atMs = presentationTimeUs / 1000
+                val index = frames.indexOfLast { it.first <= atMs }.coerceAtLeast(0)
+                val current = bitmap
+                if (index == shown && current != null) return current
+                val decoded = BitmapFactory.decodeFile(frames[index].second.absolutePath)
+                    ?: return current ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+                val height = (decoded.height * targetWidth.toFloat() / decoded.width)
+                    .toInt().coerceAtLeast(1)
+                val scaled = Bitmap.createScaledBitmap(decoded, targetWidth, height, true)
+                if (scaled !== decoded) decoded.recycle()
+                shown = index
+                bitmap = scaled
+                return scaled
+            }
         }
     }
 }

@@ -1,11 +1,8 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 
 import 'design/palette.dart';
 import 'design/tokens.dart';
 import 'widgets/pressable.dart';
-import 'widgets/stash_glass.dart';
 
 /// A frosted-glass surface: real backdrop blur + dark translucent fill + a top
 /// specular sheen + a hairline stroke. This is the *premium* surface — it costs
@@ -22,7 +19,6 @@ class GlassSurface extends StatelessWidget {
   final Gradient? borderGradient;
   final List<BoxShadow>? shadow;
   final bool refract;
-  final bool _menu;
 
   const GlassSurface({
     super.key,
@@ -35,15 +31,14 @@ class GlassSurface extends StatelessWidget {
     this.borderGradient,
     this.shadow,
     this.refract = true,
-  }) : _menu = false;
+  });
 
   const GlassSurface.menu({
     super.key,
     required this.child,
     this.radius = 44,
     this.padding = EdgeInsets.zero,
-  }) : _menu = true,
-       refract = true,
+  }) : refract = true,
        blur = Blurs.chip,
        fill = const Color(0xAD2C2C2C),
        stroke = const Color(0x42FFFFFF),
@@ -54,27 +49,19 @@ class GlassSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     final br = BorderRadius.circular(radius);
     final content = Padding(padding: padding, child: child);
+    // Solid by design: no backdrop blur, refraction, sheen or tint.
     Widget surface = ClipRRect(
       borderRadius: br,
-      child: refract && StashGlass.supported
-          ? StashGlass(radius: radius, tint: fill, menu: _menu, child: content)
-          : BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color.alphaBlend(Palette.sheen, fill), fill],
-                  ),
-                  borderRadius: br,
-                  border: borderGradient == null
-                      ? Border.all(color: stroke)
-                      : null,
-                ),
-                child: content,
-              ),
-            ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Palette.surfaceSolid,
+          borderRadius: br,
+          border: borderGradient == null
+              ? Border.all(color: Palette.strokeSolid)
+              : null,
+        ),
+        child: content,
+      ),
     );
 
     if (borderGradient != null) {
@@ -120,13 +107,9 @@ class FrostedChip extends StatelessWidget {
     final br = BorderRadius.circular(radius);
     final box = DecoratedBox(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [Color.alphaBlend(Palette.sheen, fill), fill],
-        ),
+        color: Palette.surfaceSolid,
         borderRadius: br,
-        border: Border.all(color: stroke, width: 1),
+        border: Border.all(color: Palette.strokeSolid),
       ),
       child: Padding(padding: padding, child: child),
     );
@@ -192,60 +175,15 @@ class GlassIconButton extends StatelessWidget {
       ),
     );
 
-    Widget body;
-    if (StashGlass.supported) {
-      body = GlassSurface(
-        radius: size / 2,
-        fill: active ? Palette.selectionFill : Palette.glassFill,
-        child: inner,
-      );
-    } else if (active) {
-      body = DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: Palette.selectionGradient,
-          boxShadow: const [
-            BoxShadow(
-              color: Palette.selectionGlow,
-              blurRadius: 16,
-              spreadRadius: -2,
-            ),
-          ],
-          shape: BoxShape.circle,
-          border: Border.all(color: Palette.selectionStroke, width: 1),
-        ),
-        child: inner,
-      );
-    } else if (blur) {
-      body = GlassSurface(
-        radius: size,
-        blur: Blurs.chip,
-        stroke: hasBorder
-            ? Palette.glassStroke
-            : Colors.white.withValues(alpha: 0.15),
-        child: inner,
-      );
-    } else {
-      body = DecoratedBox(
-        decoration: BoxDecoration(
-          color: hasBorder ? null : Colors.white.withValues(alpha: 0.12),
-          gradient: hasBorder
-              ? const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0x70121A2C), Palette.glassFillStrong],
-                )
-              : null,
-          shape: BoxShape.circle,
-          border: Border.all(
-            color: hasBorder
-                ? Palette.glassStroke
-                : Colors.white.withValues(alpha: 0.15),
-            width: 1,
-          ),
-        ),
-        child: inner,
-      );
-    }
+    // Solid circle; the active state is a lighter fill, never a glow.
+    final body = DecoratedBox(
+      decoration: BoxDecoration(
+        color: active ? const Color(0xFF3A3A3C) : Palette.surfaceSolid,
+        shape: BoxShape.circle,
+        border: hasBorder ? Border.all(color: Palette.strokeSolid) : null,
+      ),
+      child: inner,
+    );
 
     return Tooltip(
       message: label,

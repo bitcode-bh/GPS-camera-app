@@ -110,6 +110,16 @@ void main() {
     double scrollOf(WidgetTester tester) =>
         tester.widget<GridView>(find.byType(GridView)).controller!.offset;
 
+    List<double> zoomScales(WidgetTester tester) => [
+      for (final transform in tester.widgetList<Transform>(
+        find.descendant(
+          of: find.byType(MediaGrid),
+          matching: find.byType(Transform),
+        ),
+      ))
+        transform.transform.getMaxScaleOnAxis(),
+    ];
+
     Future<void> pinch(
       WidgetTester tester, {
       required double from,
@@ -127,19 +137,11 @@ void main() {
         await a.moveTo(center - Offset(span / 2, 0));
         await b.moveTo(center + Offset(span / 2, 0));
         await tester.pump(const Duration(milliseconds: 16));
-        // Mid-pinch the grid always fills the viewport.
-        final transform = tester.widget<Transform>(
-          find
-              .ancestor(
-                of: find.byType(GridView),
-                matching: find.byType(Transform),
-              )
-              .first,
-        );
-        expect(
-          transform.transform.getMaxScaleOnAxis(),
-          greaterThanOrEqualTo(.79),
-        );
+        // Mid-pinch, scaled layers stand in for the grid, and the top one
+        // always fills the viewport.
+        final scales = zoomScales(tester);
+        expect(scales, isNotEmpty);
+        expect(scales.last, greaterThanOrEqualTo(.79));
       }
       await a.up();
       await b.up();
@@ -172,16 +174,9 @@ void main() {
       await pinch(tester, from: 100, to: 260);
       expect(columnsOf(tester), lessThan(dense));
       expect(saved.last, columnsOf(tester));
-      // Settled: the grid is drawn at its natural size again.
-      final transform = tester.widget<Transform>(
-        find
-            .ancestor(
-              of: find.byType(GridView),
-              matching: find.byType(Transform),
-            )
-            .first,
-      );
-      expect(transform.transform.getMaxScaleOnAxis(), closeTo(1, .001));
+      // Settled: the real grid is back, drawn at its natural size.
+      expect(columnsOf(tester), isPositive);
+      expect(zoomScales(tester).every((s) => (s - 1).abs() < .001), isTrue);
       expect(tester.takeException(), isNull);
     });
 
