@@ -118,7 +118,8 @@ internal class MediaLibraryChannel(private val activity: Activity, messenger: Bi
                     "thumbnail" -> thumbnail(id, video, call.argument<Int>("size") ?: 256)
                     "read" -> resolver.openInputStream(uriFor(id, video))?.use(InputStream::readBytes)
                     "location" -> location(id, video)
-                    "share" -> share(id, video, call.argument<String>("mime"))
+                    // Unit can't cross the channel; reply with null.
+                    "share" -> share(id, video, call.argument<String>("mime")).let { null }
                     "delete" -> return@execute delete(uriFor(id, video), result)
                     else -> {
                         main.post { result.notImplemented() }

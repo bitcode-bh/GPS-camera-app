@@ -15,8 +15,8 @@ key, and core Library flows have not been tested on a device (see §H).
 | GPS EXIF on photos | Present | Present; landscape shots store an EXIF orientation tag instead of re-encoding | Yes (one landscape shot) |
 | Save original | Worked | Saved to MediaStore, linked to stamped copy for "Compare" | Yes |
 | Mic denied | Camera failed to open | Falls back to silent video with a notice | Yes |
-| Video recording + stamp export | Worked | Unchanged pipeline; temp files now deleted | No |
-| Video playback | **Broken**: handed off by `ACTION_VIEW`, failed with "unsupported" on device | In-app Media3/ExoPlayer via `video_player`: play/pause, scrub, time, mute, aspect, resume position, error + retry, single decoder | No (widget-tested) |
+| Video recording + stamp export | Worked | Unchanged pipeline; temp files now deleted | Yes: 7.4 s stamped video + original saved to `Pictures/GPS Camera Next/` |
+| Video playback | **Broken**: handed off by `ACTION_VIEW`, failed with "unsupported" on device | In-app Media3/ExoPlayer via `video_player`: play/pause, scrub, time, mute, aspect, resume position, error + retry, single decoder | Partly: video opened and played in-app with header, progress and controls; audio, seek and mute not yet checked |
 | Library discovery | Private copies + cached paths | MediaStore query of the app album, content URIs, live change observer | Yes (grid lists captures) |
 | Library grid | Fixed grid | Newest first; pinch-to-zoom 2/3/4/6 columns (wider on tablets), focal item kept, column count persisted | Grid yes, pinch no |
 | Full-screen viewer | Basic page view | Swipe, pinch, double-tap, pan when zoomed, tap toggles chrome, details + location, share, delete with system confirm, back returns to grid position | No (widget-tested) |
@@ -168,6 +168,7 @@ clears the selection.
 | 9 | Low | Control-bar thumbnail blank right after capture | Thumbnail not ready yet | One retry after 400 ms | Fixed |
 | 10 | Low | `READ_EXTERNAL_STORAGE` requested on all API levels | Manifest merger infers it from the camera plugin | Declared with `maxSdkVersion=28` | Fixed |
 | 11 | Low | `READ_MEDIA_IMAGES` requested needlessly | App-owned rows need no permission | Removed | Fixed |
+| 13 | Critical | Tapping Share crashed the app | Kotlin `share()` returned `Unit`, which the Flutter channel can't encode (`IllegalArgumentException`, `MediaLibrary.kt:128`) | Reply with `null` | Fixed; found on device; re-test pending |
 | 12 | Blocker | No release signing | No `key.properties` / upload key | **Owner action** | Open |
 
 ## E. Test summary
@@ -175,14 +176,15 @@ clears the selection.
 - `flutter analyze`: no issues.
 - `flutter test`: **87 passed, 0 failed** (13 files). New files cover the state machines, library loading and limits, grid density and anchoring, map grouping and selection, viewer gestures, and the player lifecycle.
 - Device (Motorola Edge 70, Android API 37, debug build `…gps_camera_next.debug`): see the "Device-verified" column in §A.
-- **Blocked / not run on device:** full-screen viewer gestures, grid pinch, video record → in-app playback, map markers and preview, delete and share, landscape video orientation, tablet layouts, Android ≤ 9. The device was in active personal use (including calls) during the session, so automated input was stopped.
+- **Device session 2 (13 Nov, Wi-Fi ADB):** recording and stamped export passed; Library listed the new video; in-app playback started. A crash on Share was found and fixed (defect 13). Testing paused when the phone was taken back for other use.
+- **Blocked / not run on device:** share re-test, viewer gestures, grid pinch, seek, mute and audio, map markers and preview, delete, landscape video orientation, tablet layouts, Android ≤ 9. The device was in active personal use (including calls) during the session, so automated input was stopped.
 
 ## F. Performance (measured only)
 
 | Metric | Value | Conditions |
 | --- | --- | --- |
 | Cold start, `am start -W` TotalTime | 893 ms | Previously installed build |
-| Cold start, first debug launch | 3514 ms | Debug (JIT) build, first launch; not representative |
+| Cold start, debug launch | 3514 ms / 3079 ms | Debug (JIT) build, first launch; not representative |
 | Release AAB size | 63.2 MB (63,217,338 B) | Universal bundle; Play delivers per-ABI splits |
 | Release APK size | 65.9 MB | Fat APK (all ABIs) |
 
