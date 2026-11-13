@@ -397,7 +397,13 @@ class _Chrome extends StatelessWidget {
             gradient: LinearGradient(
               begin: top ? Alignment.topCenter : Alignment.bottomCenter,
               end: top ? Alignment.bottomCenter : Alignment.topCenter,
-              colors: const [Color(0xB3000000), Colors.transparent],
+              // Stays dark under the text, so it reads over bright photos.
+              colors: const [
+                Color(0xCC000000),
+                Color(0x99000000),
+                Colors.transparent,
+              ],
+              stops: const [0, 0.7, 1],
             ),
           ),
           child: IconTheme(

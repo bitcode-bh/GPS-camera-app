@@ -300,13 +300,19 @@ class _MediaMapState extends State<MediaMap> {
         Positioned(
           left: 8,
           top: widget.topPadding + 6,
+          // Readable on any imagery: the tile terms require visible credit.
           child: const IgnorePointer(
-            child: Text(
-              'Map data © Esri',
-              style: TextStyle(
-                fontSize: 10,
-                color: Colors.white70,
-                shadows: [Shadow(color: Colors.black, blurRadius: 2)],
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.all(Radius.circular(4)),
+              ),
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                child: Text(
+                  'Map data © Esri',
+                  style: TextStyle(fontSize: 10, color: Colors.white),
+                ),
               ),
             ),
           ),

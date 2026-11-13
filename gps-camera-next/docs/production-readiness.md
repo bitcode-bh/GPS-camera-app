@@ -19,8 +19,8 @@ key, and core Library flows have not been tested on a device (see §H).
 | Video playback | **Broken**: handed off by `ACTION_VIEW`, failed with "unsupported" on device | In-app Media3/ExoPlayer via `video_player`: play/pause, scrub, time, mute, aspect, resume position, error + retry, single decoder | Yes: plays with media audio, pause holds the frame, tap-to-seek, mute toggle, replay at end, no audio player left after leaving |
 | Library discovery | Private copies + cached paths | MediaStore query of the app album, content URIs, live change observer | Yes (grid lists captures) |
 | Library grid | Fixed grid | Newest first; pinch-to-zoom 2/3/4/6 columns (wider on tablets), focal item kept, column count persisted | Grid and saved column count yes; pinch gesture not drivable over adb (single-touch only) |
-| Full-screen viewer | Basic page view | Swipe, pinch, double-tap, pan when zoomed, tap toggles chrome, details + location, share, delete with system confirm, back returns to grid position | No (widget-tested) |
-| Media map | None | Newest 20 *geotagged* items, capture location only, dot markers with clustering, preview card → viewer, reset-to-fit, tile-failure banner, empty states | No (widget-tested) |
+| Full-screen viewer | Basic page view | Swipe, pinch, double-tap, pan when zoomed, tap toggles chrome, details + location, share, delete with system confirm, back returns to grid position | Yes: double-tap zoom, pan while zoomed stays on the photo, swipe to next, details sheet, Compare button, delete confirm + cancel |
+| Media map | None | Newest 20 *geotagged* items, capture location only, dot markers with clustering, preview card → viewer, reset-to-fit, tile-failure banner, empty states | Yes: 13 geotagged items grouped in one marker with count, preview card (thumb, date/time, place, type, duration, "n of 13") swipes and opens the viewer, selection kept after back, pan + reset-to-fit; tile failure not forced |
 | Gestures, stamp UI layout | Present | Preserved (right-side zoom, left-side EV/WB, double-tap reset, stamp beside shutter) | Yes (camera screen) |
 
 Removed as dead or replaced: private captures directory, `listVideos`/`openVideo`,
@@ -169,6 +169,9 @@ clears the selection.
 | 10 | Low | `READ_EXTERNAL_STORAGE` requested on all API levels | Manifest merger infers it from the camera plugin | Declared with `maxSdkVersion=28` | Fixed |
 | 11 | Low | `READ_MEDIA_IMAGES` requested needlessly | App-owned rows need no permission | Removed | Fixed |
 | 13 | Critical | Tapping Share crashed the app | Kotlin `share()` returned `Unit`, which the Flutter channel can't encode (`IllegalArgumentException`, `MediaLibrary.kt:128`) | Reply with `null` | Fixed; found on device; re-tested: share sheet opens, no crash |
+| 14 | Low | Map credit "Map data © Esri" barely legible on imagery | Plain text on tiles | Dark pill behind the text | Fixed, device-verified |
+| 15 | Low | Viewer header hard to read over bright, zoomed photos | Gradient faded out under the second line | Darker, longer gradient | Fixed |
+| 16 | Info | Stamped photo is 1675×2233 vs 4096×3072 original | The stamp is a snapshot of the on-screen preview (existing design) | None; original kept via "Save original" | Open (design decision) |
 | 12 | Blocker | No release signing | No `key.properties` / upload key | **Owner action** | Open |
 
 ## E. Test summary
@@ -178,7 +181,8 @@ clears the selection.
 - Device (Motorola Edge 70, Android API 37, debug build `…gps_camera_next.debug`): see the "Device-verified" column in §A.
 - **Device session 2 (13 Nov, Wi-Fi ADB):** recording and stamped export passed; Library listed the new video; in-app playback started. A crash on Share was found and fixed (defect 13). Testing paused when the phone was taken back for other use.
 - **Device session 3 (13 Nov):** video audio, pause, seek, mute, replay, share (fixed), no playback after exit, and column count across a cold start all passed. Once, the grid showed 4 columns while 6 was saved; this could not be reproduced. The session ended when the phone left the network.
-- **Blocked / not run on device:** photo viewer gestures, grid pinch (needs a human), map markers and preview, delete, landscape video orientation, tablet layouts, Android ≤ 9. The device was in active personal use (including calls) during the session, so automated input was stopped.
+- **Device session 4 (13 Nov, USB):** photo viewer, details, map (markers, preview, selection, reset-to-fit) and the delete confirmation (cancelled, nothing deleted) passed.
+- **Blocked / not run on device:** grid pinch (adb can't send multi-touch; needs a person), forced map tile failure, a completed delete, landscape video orientation, tablet layouts, Android ≤ 9. The device was in active personal use (including calls) during the session, so automated input was stopped.
 
 ## F. Performance (measured only)
 
