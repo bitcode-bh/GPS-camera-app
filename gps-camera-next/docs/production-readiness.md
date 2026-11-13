@@ -179,6 +179,7 @@ clears the selection.
 | 19 | Low | "HYBRID" map tag and live dot drawn into captures | On-screen hints in the stamp | Hidden while capturing | Fixed; not seen on device (no GPS fix indoors) |
 | 20 | Low | Library pinch jumped and blinked | Hard switch between column counts; thumbnails reloaded mid-gesture | Two neighbouring levels cross-fade about the fingers; thumbnails fixed mid-pinch, swapped gaplessly | Fixed, widget-tested; pinch feel needs a person |
 | 21 | Low | Notices, menus and chips used blur, tints and glow | Glass styling | One solid neutral surface | Fixed, device-verified |
+| 22 | Medium | Video viewfinder shrank between black side bars | 9:16 box fitted between header and dock | Full-width 9:16 frame running under the dock; stamp kept clear of the dock in every orientation | Fixed, device-verified |
 | 12 | Blocker | No release signing | No `key.properties` / upload key | **Owner action** | Open |
 
 ## E. Test summary

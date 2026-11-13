@@ -1840,12 +1840,31 @@ class _CameraScreenState extends State<CameraScreen>
             final wh = _captureMode == CameraMode.photo
                 ? _settings.captureRatio.portraitWH
                 : 9 / 16;
-            final boxH = wh == null ? areaH : math.min(screenW / wh, areaH);
-            final boxW = wh == null ? screenW : math.min(screenW, boxH * wh);
+            // Video fills the width at 9:16, like the system camera, and runs
+            // under the shutter dock instead of shrinking between black bars.
+            final fullWidthVideo = _captureMode == CameraMode.video;
+            final double boxH;
+            final double boxW;
+            final double viewfinderTop;
+            if (fullWidthVideo) {
+              boxW = screenW;
+              boxH = screenW / (wh ?? 9 / 16);
+              viewfinderTop = boxH <= screenH - headerBottom
+                  ? headerBottom
+                  : math.max(0.0, screenH - boxH);
+            } else {
+              boxH = wh == null ? areaH : math.min(screenW / wh, areaH);
+              boxW = wh == null ? screenW : math.min(screenW, boxH * wh);
+              viewfinderTop = headerBottom + (areaH - boxH) / 2;
+            }
             final viewfinderLeft = (screenW - boxW) / 2;
             final viewfinderRight = viewfinderLeft;
             final boxSize = Size(boxW, boxH);
-            final viewfinderTop = headerBottom + (areaH - boxH) / 2;
+            // Keep the stamp clear of the dock that overlaps the frame.
+            final dockOverlap = math.max(
+              0.0,
+              viewfinderTop + boxH - (screenH - dockTop),
+            );
             const stampInset = 14.0;
             final heldHeight = _iconQuarterTurns.isOdd ? boxW : boxH;
             final canShowRails = heldHeight >= 174;
@@ -1880,21 +1899,34 @@ class _CameraScreenState extends State<CameraScreen>
                                         GeoData.withoutLocation(DateTime.now()))
                                   : null);
                         if (geo == null) return const SizedBox.shrink();
+                        final turns =
+                            (_showFreeze
+                                ? _captureQuarterTurns
+                                : _iconQuarterTurns) %
+                            4;
+                        // The dock covers the physical bottom of the frame; in
+                        // the rotated stamp layer that is a different edge.
+                        final clear = EdgeInsets.fromLTRB(
+                          turns == 3 ? dockOverlap : 0,
+                          turns == 2 ? dockOverlap : 0,
+                          turns == 1 ? dockOverlap : 0,
+                          turns == 0 ? dockOverlap : 0,
+                        );
                         return Positioned.fill(
                           child: RotatedBox(
-                            quarterTurns: _showFreeze
-                                ? _captureQuarterTurns
-                                : _iconQuarterTurns,
+                            quarterTurns: turns,
                             child: Align(
                               key: _stampSpaceKey,
                               alignment: Alignment.bottomLeft,
                               child: Padding(
-                                padding: const EdgeInsets.fromLTRB(
-                                  10,
-                                  0,
-                                  10,
-                                  stampInset,
-                                ),
+                                padding:
+                                    const EdgeInsets.fromLTRB(
+                                      10,
+                                      0,
+                                      10,
+                                      stampInset,
+                                    ) +
+                                    clear,
                                 child: GestureDetector(
                                   behavior: HitTestBehavior.opaque,
                                   onLongPress:
