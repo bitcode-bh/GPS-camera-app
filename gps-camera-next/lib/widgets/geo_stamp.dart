@@ -32,6 +32,9 @@ class GeoStamp extends StatelessWidget {
   /// A saved stamp must render independently of the live camera texture.
   final bool forCapture;
 
+  /// While recording, the stamp on screen is what the video carries.
+  final bool recording;
+
   /// When false the mini-map renders as a painted placeholder instead of a live
   /// tile map — used by the small previews to avoid many map engines at once.
   final bool realMap;
@@ -47,6 +50,7 @@ class GeoStamp extends StatelessWidget {
     this.preview = false,
     this.live = true,
     this.forCapture = false,
+    this.recording = false,
     this.realMap = true,
     this.onMapTap,
   });
@@ -84,6 +88,7 @@ class GeoStamp extends StatelessWidget {
               accent: _accent,
               radius: Corners.xs,
               compact: preview,
+              showHints: !forCapture && !recording,
               realMap: realMap,
             ),
           )

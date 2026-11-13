@@ -56,6 +56,7 @@ class _CameraScreenState extends State<CameraScreen>
   final _library = MediaLibrary.instance;
   final _freezeKey = GlobalKey();
   final _stampKey = GlobalKey(); // The stamp alone, for video frames.
+  final _stampSpaceKey = GlobalKey(); // The stamp's upright frame.
   _Adjustment? _adjustment;
   int _minKelvin = 0, _maxKelvin = 0;
   int? _kelvin, _appliedKelvin;
@@ -1169,6 +1170,7 @@ class _CameraScreenState extends State<CameraScreen>
     final geo = _settings.saveLocation ? _usableGeo : null;
     _video = _VideoJob(
       startedAt: DateTime.now(),
+      quarterTurns: _iconQuarterTurns,
       stamp: _settings.stampEnabled,
       keepOriginal: _settings.saveOriginal,
       clock24: _settings.clock24,
@@ -1227,7 +1229,9 @@ class _CameraScreenState extends State<CameraScreen>
   /// Saves a picture of the stamp exactly as it is drawn on screen.
   Future<void> _captureStampFrame(_VideoJob job, int atMs) async {
     final stamp = _stampKey.currentContext?.findRenderObject();
-    final frame = _freezeKey.currentContext?.findRenderObject();
+    // Measured inside the rotated stamp layer, so a sideways recording places
+    // the stamp in the upright (landscape) frame, as a sideways photo does.
+    final frame = _stampSpaceKey.currentContext?.findRenderObject();
     if (stamp is! RenderRepaintBoundary || frame is! RenderBox) return;
     if (!stamp.hasSize || !frame.hasSize || frame.size.isEmpty) return;
     try {
@@ -1279,6 +1283,7 @@ class _CameraScreenState extends State<CameraScreen>
           clock24: job.clock24,
           frames: job.frames,
           stampRect: job.stampRect,
+          quarterTurns: job.quarterTurns,
         );
       }
       final uri = await service.saveVideoToGallery(
@@ -1881,6 +1886,7 @@ class _CameraScreenState extends State<CameraScreen>
                                 ? _captureQuarterTurns
                                 : _iconQuarterTurns,
                             child: Align(
+                              key: _stampSpaceKey,
                               alignment: Alignment.bottomLeft,
                               child: Padding(
                                 padding: const EdgeInsets.fromLTRB(
@@ -1921,6 +1927,7 @@ class _CameraScreenState extends State<CameraScreen>
                                     child: GeoStamp(
                                       geo: geo,
                                       forCapture: _showFreeze,
+                                      recording: _machine.recordingBusy,
                                       config: _templates.config,
                                       settings: _settings,
                                       onMapTap:
@@ -2238,6 +2245,7 @@ class _CameraScreenState extends State<CameraScreen>
 class _VideoJob {
   _VideoJob({
     required this.startedAt,
+    required this.quarterTurns,
     required this.stamp,
     required this.keepOriginal,
     required this.clock24,
@@ -2245,6 +2253,7 @@ class _VideoJob {
   });
 
   final DateTime startedAt;
+  final int quarterTurns; // How the phone was held when recording began.
   final bool stamp;
   final bool keepOriginal;
   final bool clock24;

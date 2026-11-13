@@ -17,7 +17,7 @@ pinch still needs one manual check.
 | GPS EXIF on photos | Present | Present; landscape shots store an EXIF orientation tag instead of re-encoding | Yes (one landscape shot) |
 | Save original | Worked | Saved to MediaStore, linked to stamped copy for "Compare" | Yes |
 | Mic denied | Camera failed to open | Falls back to silent video with a notice | Yes |
-| Video recording + stamp export | Worked | Unchanged pipeline; temp files now deleted | Yes: 7.4 s stamped video + original saved to `Pictures/GPS Camera Next/` |
+| Video recording + stamp export | Plain two-line text stamp; original also saved when "Save original" was on | Same stamp as photos: a picture of the on-screen geostamp, re-taken when the place changes (at most every 10 s), placed where it sits in the viewfinder; sideways recordings are turned upright like sideways photos; the map-style tag is left out of captures; temp files deleted | Yes: 7.4 s stamped video + original saved to `Pictures/GPS Camera Next/` |
 | Video playback | **Broken**: handed off by `ACTION_VIEW`, failed with "unsupported" on device | In-app Media3/ExoPlayer via `video_player`: play/pause, scrub, time, mute, aspect, resume position, error + retry, single decoder | Yes: plays with media audio, pause holds the frame, tap-to-seek, mute toggle, replay at end, no audio player left after leaving |
 | Library discovery | Private copies + cached paths | MediaStore query of the app album, content URIs, live change observer | Yes (grid lists captures) |
 | Library grid | Fixed grid | Newest first; pinch-to-zoom 2/3/4/6 columns (wider on tablets), focal item kept, column count persisted | Grid and saved column count yes; pinch gesture not drivable over adb (single-touch only) |
@@ -174,6 +174,11 @@ clears the selection.
 | 14 | Low | Map credit "Map data © Esri" barely legible on imagery | Plain text on tiles | Dark pill behind the text | Fixed, device-verified |
 | 15 | Low | Viewer header hard to read over bright, zoomed photos | Gradient faded out under the second line | Darker, longer gradient | Fixed |
 | 16 | Info | Stamped photo is 1675×2233 vs 4096×3072 original | The stamp is a snapshot of the on-screen preview (existing design) | None; original kept via "Save original" | Open (design decision) |
+| 17 | Medium | Video stamp looked unlike the photo stamp | Separate native text overlay | Media3 bitmap overlay of the on-screen stamp | Fixed, device-verified (address, coordinates, time and mini-map in a landscape video) |
+| 18 | Medium | Sideways videos played portrait with the stamp sideways | Rotation not baked in | Video turned upright before the stamp | Fixed, device-verified (1920×1080, orientation 0) |
+| 19 | Low | "HYBRID" map tag and live dot drawn into captures | On-screen hints in the stamp | Hidden while capturing | Fixed; not seen on device (no GPS fix indoors) |
+| 20 | Low | Library pinch jumped and blinked | Hard switch between column counts; thumbnails reloaded mid-gesture | Two neighbouring levels cross-fade about the fingers; thumbnails fixed mid-pinch, swapped gaplessly | Fixed, widget-tested; pinch feel needs a person |
+| 21 | Low | Notices, menus and chips used blur, tints and glow | Glass styling | One solid neutral surface | Fixed, device-verified |
 | 12 | Blocker | No release signing | No `key.properties` / upload key | **Owner action** | Open |
 
 ## E. Test summary

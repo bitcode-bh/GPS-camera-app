@@ -25,6 +25,10 @@ class MiniMap extends StatelessWidget {
   final double radius;
   final bool compact;
 
+  /// The map-style tag and live dot are on-screen hints; captures leave them
+  /// out.
+  final bool showHints;
+
   /// When false, a lightweight painted placeholder is shown instead of a live
   /// tile map. Used for the many tiny previews (template gallery, editor) so we
   /// never spin up a dozen map engines / tile downloads at once.
@@ -40,6 +44,7 @@ class MiniMap extends StatelessWidget {
     this.zoom = 16.5,
     this.radius = 14,
     this.compact = false,
+    this.showHints = true,
     this.realMap = true,
   });
 
@@ -135,16 +140,18 @@ class MiniMap extends StatelessWidget {
                 ),
               ),
               if (!compact) ...[
-                Positioned(
-                  left: 6,
-                  top: 6,
-                  child: _Tag(text: kind.label.toUpperCase(), accent: accent),
-                ),
-                Positioned(
-                  right: 6,
-                  top: 6,
-                  child: _LiveDot(color: Palette.success),
-                ),
+                if (showHints) ...[
+                  Positioned(
+                    left: 6,
+                    top: 6,
+                    child: _Tag(text: kind.label.toUpperCase(), accent: accent),
+                  ),
+                  Positioned(
+                    right: 6,
+                    top: 6,
+                    child: _LiveDot(color: Palette.success),
+                  ),
+                ],
                 const Positioned(
                   left: 8,
                   bottom: 6,

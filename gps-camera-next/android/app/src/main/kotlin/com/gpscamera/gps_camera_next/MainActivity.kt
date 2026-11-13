@@ -66,10 +66,11 @@ class MainActivity : FlutterActivity() {
                                 }.sortedBy { it.first }
                             val rect = call.argument<List<Number>>("stampRect")
                                 ?.map { it.toFloat() }?.takeIf { it.size == 3 }
+                            val turns = call.argument<Number>("quarterTurns")?.toInt() ?: 0
                             runOnUiThread {
                                 VideoStamp.export(
                                     applicationContext, File(path), start, samples, clock24,
-                                    frames, rect, result,
+                                    frames, rect, turns, result,
                                 )
                             }
                         }

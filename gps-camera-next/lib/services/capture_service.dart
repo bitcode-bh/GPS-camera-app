@@ -119,6 +119,7 @@ class CaptureService {
     required bool clock24,
     List<Map<String, Object>> frames = const [],
     List<double>? stampRect,
+    int quarterTurns = 0,
   }) async {
     try {
       return await _channel.invokeMethod<String>('stampVideo', {
@@ -128,6 +129,7 @@ class CaptureService {
         'clock24': clock24,
         'frames': frames,
         'stampRect': stampRect,
+        'quarterTurns': quarterTurns,
       });
     } on PlatformException {
       return null;

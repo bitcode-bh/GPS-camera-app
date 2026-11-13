@@ -16,6 +16,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.effect.BitmapOverlay
 import androidx.media3.effect.OverlayEffect
+import androidx.media3.effect.ScaleAndRotateTransformation
 import androidx.media3.effect.TextureOverlay
 import androidx.media3.effect.StaticOverlaySettings
 import androidx.media3.effect.TextOverlay
@@ -41,6 +42,7 @@ internal object VideoStamp {
         clock24: Boolean,
         frames: List<Pair<Long, File>>,
         stampRect: List<Float>?,
+        quarterTurns: Int,
         result: MethodChannel.Result,
     ) {
         var pendingOutput: File? = null
@@ -101,7 +103,7 @@ internal object VideoStamp {
                     overlay
                 }
             val item = EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(source)))
-                .setEffects(Effects(emptyList(), listOf(OverlayEffect(listOf(stamp)))))
+                .setEffects(Effects(emptyList(), videoEffects(quarterTurns, stamp)))
                 .build()
             Transformer.Builder(context)
                 .addListener(object : Transformer.Listener {
@@ -124,6 +126,16 @@ internal object VideoStamp {
             pendingOutput?.delete()
             result.error("video_stamp", "Could not start the video export", null)
         }
+    }
+
+    /// A sideways recording is turned upright first, like a sideways photo,
+    /// so the stamp reads level in the landscape video.
+    private fun videoEffects(quarterTurns: Int, stamp: TextureOverlay) = buildList {
+        val turns = Math.floorMod(quarterTurns, 4)
+        if (turns != 0) {
+            add(ScaleAndRotateTransformation.Builder().setRotationDegrees(turns * 90f).build())
+        }
+        add(OverlayEffect(listOf(stamp)))
     }
 
     private fun pictureOverlay(frames: List<Pair<Long, File>>, rect: List<Float>): BitmapOverlay {
