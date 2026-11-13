@@ -16,9 +16,9 @@ key, and core Library flows have not been tested on a device (see §H).
 | Save original | Worked | Saved to MediaStore, linked to stamped copy for "Compare" | Yes |
 | Mic denied | Camera failed to open | Falls back to silent video with a notice | Yes |
 | Video recording + stamp export | Worked | Unchanged pipeline; temp files now deleted | Yes: 7.4 s stamped video + original saved to `Pictures/GPS Camera Next/` |
-| Video playback | **Broken**: handed off by `ACTION_VIEW`, failed with "unsupported" on device | In-app Media3/ExoPlayer via `video_player`: play/pause, scrub, time, mute, aspect, resume position, error + retry, single decoder | Partly: video opened and played in-app with header, progress and controls; audio, seek and mute not yet checked |
+| Video playback | **Broken**: handed off by `ACTION_VIEW`, failed with "unsupported" on device | In-app Media3/ExoPlayer via `video_player`: play/pause, scrub, time, mute, aspect, resume position, error + retry, single decoder | Yes: plays with media audio, pause holds the frame, tap-to-seek, mute toggle, replay at end, no audio player left after leaving |
 | Library discovery | Private copies + cached paths | MediaStore query of the app album, content URIs, live change observer | Yes (grid lists captures) |
-| Library grid | Fixed grid | Newest first; pinch-to-zoom 2/3/4/6 columns (wider on tablets), focal item kept, column count persisted | Grid yes, pinch no |
+| Library grid | Fixed grid | Newest first; pinch-to-zoom 2/3/4/6 columns (wider on tablets), focal item kept, column count persisted | Grid and saved column count yes; pinch gesture not drivable over adb (single-touch only) |
 | Full-screen viewer | Basic page view | Swipe, pinch, double-tap, pan when zoomed, tap toggles chrome, details + location, share, delete with system confirm, back returns to grid position | No (widget-tested) |
 | Media map | None | Newest 20 *geotagged* items, capture location only, dot markers with clustering, preview card → viewer, reset-to-fit, tile-failure banner, empty states | No (widget-tested) |
 | Gestures, stamp UI layout | Present | Preserved (right-side zoom, left-side EV/WB, double-tap reset, stamp beside shutter) | Yes (camera screen) |
@@ -168,7 +168,7 @@ clears the selection.
 | 9 | Low | Control-bar thumbnail blank right after capture | Thumbnail not ready yet | One retry after 400 ms | Fixed |
 | 10 | Low | `READ_EXTERNAL_STORAGE` requested on all API levels | Manifest merger infers it from the camera plugin | Declared with `maxSdkVersion=28` | Fixed |
 | 11 | Low | `READ_MEDIA_IMAGES` requested needlessly | App-owned rows need no permission | Removed | Fixed |
-| 13 | Critical | Tapping Share crashed the app | Kotlin `share()` returned `Unit`, which the Flutter channel can't encode (`IllegalArgumentException`, `MediaLibrary.kt:128`) | Reply with `null` | Fixed; found on device; re-test pending |
+| 13 | Critical | Tapping Share crashed the app | Kotlin `share()` returned `Unit`, which the Flutter channel can't encode (`IllegalArgumentException`, `MediaLibrary.kt:128`) | Reply with `null` | Fixed; found on device; re-tested: share sheet opens, no crash |
 | 12 | Blocker | No release signing | No `key.properties` / upload key | **Owner action** | Open |
 
 ## E. Test summary
@@ -177,7 +177,8 @@ clears the selection.
 - `flutter test`: **87 passed, 0 failed** (13 files). New files cover the state machines, library loading and limits, grid density and anchoring, map grouping and selection, viewer gestures, and the player lifecycle.
 - Device (Motorola Edge 70, Android API 37, debug build `…gps_camera_next.debug`): see the "Device-verified" column in §A.
 - **Device session 2 (13 Nov, Wi-Fi ADB):** recording and stamped export passed; Library listed the new video; in-app playback started. A crash on Share was found and fixed (defect 13). Testing paused when the phone was taken back for other use.
-- **Blocked / not run on device:** share re-test, viewer gestures, grid pinch, seek, mute and audio, map markers and preview, delete, landscape video orientation, tablet layouts, Android ≤ 9. The device was in active personal use (including calls) during the session, so automated input was stopped.
+- **Device session 3 (13 Nov):** video audio, pause, seek, mute, replay, share (fixed), no playback after exit, and column count across a cold start all passed. Once, the grid showed 4 columns while 6 was saved; this could not be reproduced. The session ended when the phone left the network.
+- **Blocked / not run on device:** photo viewer gestures, grid pinch (needs a human), map markers and preview, delete, landscape video orientation, tablet layouts, Android ≤ 9. The device was in active personal use (including calls) during the session, so automated input was stopped.
 
 ## F. Performance (measured only)
 
