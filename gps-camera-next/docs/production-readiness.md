@@ -3,9 +3,11 @@
 Audit base: `cee3c36`. Work branch: `claude/gps-camera-next-production-be862f`.
 Toolchain: Flutter 3.44.2 / Dart 3.12.2, compile and target SDK 36, min SDK 24.
 
-**Status: NOT READY for Play submission.** The code builds and every
-automated check passes, but two release blockers remain: there is no upload
-key, and core Library flows have not been tested on a device (see §H).
+**Status: CONDITIONALLY READY.** The code builds, every automated check
+passes, and the camera, video, Library, viewer and map flows passed on a
+Motorola Edge 70. Play submission is still blocked by owner actions: an upload
+key, a version code, a privacy policy and the Data safety form (see §H). Grid
+pinch still needs one manual check.
 
 ## A. Functional audit
 
