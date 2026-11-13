@@ -192,7 +192,7 @@ clears the selection.
 | --- | --- | --- |
 | Cold start, `am start -W` TotalTime | 893 ms | Previously installed build |
 | Cold start, debug launch | 3514 ms / 3079 ms | Debug (JIT) build, first launch; not representative |
-| Release AAB size | 63.2 MB (63,217,338 B) | Universal bundle; Play delivers per-ABI splits |
+| Release AAB size | 63.2 MB (63,217,692 B) | Universal bundle; Play delivers per-ABI splits |
 | Release APK size | 65.9 MB | Fat APK (all ABIs) |
 
 No frame-timing or memory profile of the release build was captured. No
@@ -201,9 +201,9 @@ smoothness claims are made.
 ## G. Production build
 
 - `build/app/outputs/bundle/release/app-release.aab`
-  SHA-256 `44c7f5be815d01f179fddbc4d717cfc4bee5566eda3341589bf7008cbe7c2009`
+  SHA-256 `d406bc14b225d96acb5d7929b2a4f222bf79a18aa66d3bb01d04404bfae3e0f0`
 - `build/app/outputs/flutter-apk/app-release.apk`
-  SHA-256 `b211d995ecdf46c4d31d57a33a1a6a9c6b75460dff37326aa083f94b6876c087`
+  SHA-256 `5bc450a3184c963127da306bb9f6cb4cfba9ab2d11a609ab19b288f8df862d3e`
 - Package `com.gpscamera.gps_camera_next`, version `0.1.0` (code 1).
 - **Signed with the debug key** because `android/key.properties` is absent.
   R8/resource shrinking is enabled only when the key file is present. Play
