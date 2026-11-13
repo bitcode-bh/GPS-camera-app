@@ -446,6 +446,7 @@ class _PhotoPageState extends State<PhotoPage>
   void initState() {
     super.initState();
     _transform.addListener(_reportZoom);
+    _animation; // Create the ticker now. Dispose is too late to do it.
   }
 
   @override

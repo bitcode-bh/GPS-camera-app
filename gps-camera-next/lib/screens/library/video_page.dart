@@ -33,6 +33,12 @@ class VideoPage extends StatefulWidget {
   final ValueChanged<bool> onMuted;
   final double bottomInset;
 
+  /// Tests run on separate fake clocks, so a teardown queued in one test can
+  /// never finish in the next. Production code never needs this.
+  @visibleForTesting
+  static void debugResetTeardown() =>
+      _VideoPageState._teardown = Future.value();
+
   @override
   State<VideoPage> createState() => _VideoPageState();
 }
@@ -86,8 +92,17 @@ class _VideoPageState extends State<VideoPage> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
+  /// Players being torn down. A new one waits for these, so two decoders are
+  /// never held at once, even mid-swipe.
+  static Future<void> _teardown = Future.value();
+  int _openRun = 0;
+
   Future<void> _open() async {
     if (!_machine.go(PlaybackPhase.preparing)) return;
+    final run = ++_openRun;
+    await _teardown;
+    // Swiped away, or reopened, while the previous player was closing.
+    if (!mounted || run != _openRun || !widget.active) return;
     final player = VideoPlayerController.contentUri(widget.item.uri);
     _player = player;
     try {
@@ -133,6 +148,7 @@ class _VideoPageState extends State<VideoPage> with WidgetsBindingObserver {
   }
 
   void _release() {
+    _openRun++; // Cancels an open still waiting for its turn.
     final player = _player;
     if (player == null) return;
     _player = null;
@@ -142,7 +158,14 @@ class _VideoPageState extends State<VideoPage> with WidgetsBindingObserver {
         player.value.isCompleted ? Duration.zero : player.value.position,
       );
     }
-    unawaited(player.dispose());
+    _teardown = _teardown.then((_) async {
+      try {
+        // Bounded, so one stuck release can never block later playback.
+        await player.dispose().timeout(const Duration(seconds: 3));
+      } catch (_) {
+        // A player that failed to start has nothing left to free.
+      }
+    });
   }
 
   void _pause() {

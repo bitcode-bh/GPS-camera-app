@@ -137,6 +137,12 @@ class MediaGridState extends State<MediaGrid>
   );
 
   @override
+  void initState() {
+    super.initState();
+    _settle; // Create the ticker now. Dispose is too late to do it.
+  }
+
+  @override
   void dispose() {
     _settle.dispose();
     _scroll.dispose();
