@@ -97,8 +97,10 @@ class LocationService {
         });
         positions = NativeLocation.positions().listen(
           (position) {
+            final now = DateTime.now();
             if (!current() ||
-                !acceptsFix(position, _lastAccepted, DateTime.now())) {
+                !acceptsFix(position, _lastAccepted, now) ||
+                !isBetterFix(position, _lastAccepted, now)) {
               return;
             }
             acquiring?.cancel();
@@ -130,10 +132,15 @@ class LocationService {
       onListen: () {
         start();
         try {
-          service = NativeLocation.switchChanges().listen(
-            (_) => start(),
-            onError: (Object _) {},
-          );
+          // Android also broadcasts internal provider changes; restart only
+          // when the location switch itself flips, or the fix is lost.
+          bool? enabled;
+          service = NativeLocation.switchChanges().listen((on) {
+            if (on == enabled) return;
+            final first = enabled == null;
+            enabled = on;
+            if (!first || !on) start();
+          }, onError: (Object _) {});
         } catch (_) {
           // Not available on every platform.
         }
@@ -165,10 +172,27 @@ class LocationService {
     final seconds =
         fix.timestamp.difference(previous.timestamp).inMilliseconds / 1000;
     if (seconds <= 0) return false;
+    // A clearly more accurate fix is trusted over a rough one (e.g. a cell
+    // tower guess), or one bad first fix would lock out every good one.
+    if (fix.accuracy * 2 <= previous.accuracy) return true;
     final from = LatLngLite(previous.latitude, previous.longitude);
     final to = LatLngLite(fix.latitude, fix.longitude);
     return from.distanceTo(to) <=
         seconds * 110 + previous.accuracy + fix.accuracy;
+  }
+
+  /// How long a good fix outranks a less accurate one. Indoors the fused
+  /// provider alternates between Wi-Fi fixes (~10 m) and weak GPS fixes
+  /// (20–200 m); without this the stamp flickers to "GPS unavailable".
+  static const keepBetterFix = Duration(seconds: 20);
+
+  /// Whether [fix] should replace [current]: it is of comparable or better
+  /// quality, or [current] is older than [keepBetterFix]. Comparable keeps a
+  /// good fix fresh (±15 m may replace ±14 m); only clearly worse fixes wait.
+  static bool isBetterFix(Fix fix, Fix? current, DateTime now) {
+    if (current == null) return true;
+    if (now.difference(current.timestamp) > keepBetterFix) return true;
+    return fix.accuracy <= current.accuracy * 1.5 + 5;
   }
 
   bool _hasAddressFor(LatLngLite here) =>

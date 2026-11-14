@@ -118,6 +118,23 @@ class LocationChannel(private val activity: Activity, messenger: BinaryMessenger
                     .filter { manager.allProviders.contains(it) }
             }
             if (providers.isEmpty()) return events.error("unavailable", "No location provider", null)
+            // Start from Android's latest position when it is recent, so the
+            // stamp is not blank while the first new fix arrives.
+            try {
+                val recent = (providers + LocationManager.GPS_PROVIDER + LocationManager.NETWORK_PROVIDER)
+                    .distinct()
+                    .filter { manager.allProviders.contains(it) }
+                    .mapNotNull { manager.getLastKnownLocation(it) }
+                    // Only a usable fix: a rough cell-tower guess would stamp
+                    // the wrong place until GPS catches up.
+                    .filter { it.hasAccuracy() && it.accuracy <= SEED_ACCURACY_M }
+                    .filter { System.currentTimeMillis() - it.time < RECENT_MS }
+                    .minByOrNull { it.accuracy }
+                if (recent != null) {
+                    onLocationChanged(recent)
+                }
+            } catch (_: Exception) {
+            }
             try {
                 for (provider in providers) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -194,5 +211,7 @@ class LocationChannel(private val activity: Activity, messenger: BinaryMessenger
     companion object {
         const val REQUEST_LOCATION = 4703
         const val INTERVAL_MS = 5000L
+        const val RECENT_MS = 30_000L
+        const val SEED_ACCURACY_M = 100f
     }
 }

@@ -116,12 +116,22 @@ class _CameraScreenState extends State<CameraScreen>
     return geo != null && geo.hasFreshFix(DateTime.now()) ? geo : null;
   }
 
+  /// The newest fix within the accuracy limit that is still fresh. A weak
+  /// fix in between (common indoors) does not blank the stamp while a good
+  /// one from the last minute exists.
   GeoData? get _usableGeo {
+    final now = DateTime.now();
     final geo = _freshGeo;
-    return geo != null && geo.accuracy <= _settings.gpsAccuracyLimit
-        ? geo
+    if (geo != null && geo.accuracy <= _settings.gpsAccuracyLimit) return geo;
+    final good = _lastGoodGeo;
+    return good != null &&
+            good.hasFreshFix(now) &&
+            good.accuracy <= _settings.gpsAccuracyLimit
+        ? good
         : null;
   }
+
+  GeoData? _lastGoodGeo;
 
   GeoData? _captureGeo;
   int _captureQuarterTurns = 0;
@@ -348,7 +358,13 @@ class _CameraScreenState extends State<CameraScreen>
     setState(() => _gps = const GpsStatus(GpsState.acquiring));
     _geoSub = _location.watch(ask: ask).listen((status) {
       if (!mounted) return;
-      setState(() => _gps = status);
+      final fix = status.fix;
+      setState(() {
+        _gps = status;
+        if (fix != null && fix.accuracy <= _settings.gpsAccuracyLimit) {
+          _lastGoodGeo = fix;
+        }
+      });
       _fixExpiry?.cancel();
       final fixTime = status.fix?.fixTime;
       if (fixTime != null) {

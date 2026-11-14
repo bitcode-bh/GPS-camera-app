@@ -51,4 +51,59 @@ void main() {
   test('demo locations are never fresh device fixes', () {
     expect(GeoData.demo().hasFreshFix(now), isFalse);
   });
+
+  test('a weak fix does not replace a recent better one', () {
+    final good = fix(-5, accuracy: 10);
+    // 13 s later a 200 m fix arrives: keep the 10 m fix.
+    expect(
+      LocationService.isBetterFix(
+        fix(13, accuracy: 200),
+        good,
+        now.add(const Duration(seconds: 13)),
+      ),
+      isFalse,
+    );
+    // A fix at least as accurate always wins, and so does a comparable one,
+    // which keeps a good position fresh.
+    expect(LocationService.isBetterFix(fix(0, accuracy: 9), good, now), isTrue);
+    expect(
+      LocationService.isBetterFix(fix(0, accuracy: 15), good, now),
+      isTrue,
+    );
+    expect(
+      LocationService.isBetterFix(fix(0, accuracy: 40), good, now),
+      isFalse,
+    );
+    // Once the good fix is over 20 s old, the newest fix wins, weak or not.
+    expect(
+      LocationService.isBetterFix(
+        fix(16, accuracy: 200),
+        good,
+        now.add(const Duration(seconds: 16)),
+      ),
+      isTrue,
+    );
+    expect(
+      LocationService.isBetterFix(fix(0, accuracy: 200), null, now),
+      isTrue,
+    );
+  });
+
+  test('a rough first fix never locks out accurate ones', () {
+    // A cell-tower guess 2 km away claiming ±900 m, then a ±15 m fix.
+    final rough = fix(-6, lat: 12.018, accuracy: 900);
+    expect(
+      LocationService.acceptsFix(fix(-1, accuracy: 15), rough, now),
+      isTrue,
+    );
+    // A similar-quality fix far away is still rejected as a jump.
+    expect(
+      LocationService.acceptsFix(
+        fix(-1, lat: 12.05, accuracy: 600),
+        rough,
+        now,
+      ),
+      isFalse,
+    );
+  });
 }
