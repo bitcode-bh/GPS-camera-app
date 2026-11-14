@@ -18,10 +18,13 @@ import kotlin.math.abs
 class MainActivity : FlutterActivity() {
     private val channel = "com.gpscamera.gps_camera_next/gallery"
     private var library: MediaLibraryChannel? = null
+    private var platform: PlatformChannel? = null
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         library?.dispose()
         library = null
+        platform?.dispose()
+        platform = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
 
@@ -40,6 +43,7 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         val messenger = flutterEngine.dartExecutor.binaryMessenger
         library = MediaLibraryChannel(this, messenger)
+        platform = PlatformChannel(this, messenger)
         MethodChannel(
             messenger, channel, StandardMethodCodec.INSTANCE, messenger.makeBackgroundTaskQueue()
         ).setMethodCallHandler { call, result ->

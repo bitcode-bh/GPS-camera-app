@@ -1,9 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../core/design/palette.dart';
 import '../../core/design/text_styles.dart';
+import '../../services/native.dart';
 
 /// The published privacy policy. Set at build time:
 /// `--dart-define=PRIVACY_POLICY_URL=https://example.com/privacy`
@@ -17,8 +17,7 @@ const mapAccuracyNotice =
 /// "1.2.0 (14)" from the installed package.
 Future<String> appVersion() async {
   try {
-    final info = await PackageInfo.fromPlatform();
-    return '${info.version} (${info.buildNumber})';
+    return await Native.appVersion() ?? '—';
   } catch (_) {
     return '—';
   }

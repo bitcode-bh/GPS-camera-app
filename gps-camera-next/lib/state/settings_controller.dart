@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'prefs.dart';
 
 import '../models/capture_options.dart';
 import '../models/coordinates.dart';
@@ -13,7 +13,7 @@ class SettingsController extends ChangeNotifier {
   SettingsController._();
   static final SettingsController instance = SettingsController._();
 
-  SharedPreferences? _prefs;
+  Prefs? _prefs;
 
   MapKind mapKind = MapKind.hybrid;
   CoordFormat coordFormat = CoordFormat.decimal;
@@ -34,7 +34,7 @@ class SettingsController extends ChangeNotifier {
   /// Library grid density. Null until the user pinches the grid.
   int? libraryColumns;
 
-  void attach(SharedPreferences prefs) {
+  void attach(Prefs prefs) {
     _prefs = prefs;
     final s = prefs;
     mapKind = _read(MapKind.values, s.getString('mapKind'), MapKind.hybrid);

@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gps_camera_next/models/template.dart';
 import 'package:gps_camera_next/state/template_controller.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:gps_camera_next/state/prefs.dart';
 
 void main() {
   test('custom field values and visibility survive template serialization', () {
@@ -24,8 +24,7 @@ void main() {
   });
 
   test('named templates persist and keep the current photo number', () async {
-    SharedPreferences.setMockInitialValues({});
-    final preferences = await SharedPreferences.getInstance();
+    final preferences = Prefs.memory();
     final controller = TemplateController.instance..attach(preferences);
     controller.update((config) => config.siteId = 'A-12');
     controller.saveTemplate('Survey A');

@@ -7,9 +7,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_compass/flutter_compass.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:sensors_plus/sensors_plus.dart';
 
 import '../../core/design/palette.dart';
 import '../../core/design/text_styles.dart';
@@ -25,6 +23,7 @@ import '../../services/capture_service.dart';
 import '../../services/location_service.dart';
 import '../../services/media_image.dart';
 import '../../services/media_library.dart';
+import '../../services/native.dart';
 import '../../state/settings_controller.dart';
 import '../../state/state_machine.dart';
 import '../../state/template_controller.dart';
@@ -86,16 +85,16 @@ class _CameraScreenState extends State<CameraScreen>
   bool _hadPinch = false;
   final _viewfinderPointers = <int>{};
 
-  StreamSubscription<AccelerometerEvent>? _orientationSub;
+  StreamSubscription<List<double>>? _orientationSub;
   int _iconQuarterTurns = 0;
 
   void _listenForOrientation() {
-    _orientationSub ??= accelerometerEventStream().listen((event) {
+    _orientationSub ??= Native.gravity().listen((g) {
       // Ignore flat positions and diagonal motion near an orientation boundary.
-      final x = event.x.abs();
-      final y = event.y.abs();
+      final x = g[0].abs();
+      final y = g[1].abs();
       if (math.max(x, y) < 6.5 || (x - y).abs() < 2) return;
-      final target = x > y ? (event.x > 0 ? 1 : -1) : (event.y > 0 ? 0 : 2);
+      final target = x > y ? (g[0] > 0 ? 1 : -1) : (g[1] > 0 ? 0 : 2);
       final step = (target - _iconQuarterTurns + 2) % 4 - 2;
       if (step != 0 && mounted) {
         setState(() {
@@ -130,7 +129,7 @@ class _CameraScreenState extends State<CameraScreen>
   // Live magnetometer compass (GPS heading is only valid while moving).
   // Kept in a ValueNotifier so compass ticks only repaint the stamp widget
   // instead of rebuilding the entire camera screen at ~12 fps.
-  StreamSubscription<CompassEvent>? _compassSub;
+  StreamSubscription<double>? _compassSub;
   final ValueNotifier<double?> _compassHeading = ValueNotifier(null);
   DateTime _lastCompassTick = DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -214,9 +213,8 @@ class _CameraScreenState extends State<CameraScreen>
     );
   }
 
-  void _onCompass(CompassEvent e) {
-    final h = e.heading;
-    if (h == null || !mounted) return;
+  void _onCompass(double h) {
+    if (!mounted) return;
     final norm = (h % 360 + 360) % 360;
     final now = DateTime.now();
     // Throttle: at most ~12 fps and only on a meaningful change.
@@ -280,7 +278,10 @@ class _CameraScreenState extends State<CameraScreen>
   void _syncSession() {
     if (_wantCamera) {
       _listenForOrientation();
-      _compassSub ??= FlutterCompass.events?.listen(_onCompass);
+      _compassSub ??= Native.heading().listen(
+        _onCompass,
+        onError: (Object _) {},
+      );
       unawaited(_openCamera());
     } else {
       _stopLocation();

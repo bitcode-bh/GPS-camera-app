@@ -4,9 +4,9 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../models/media_item.dart';
+import 'native.dart';
 
 enum StorageAccess { granted, denied, permanentlyDenied }
 
@@ -94,7 +94,7 @@ class MediaIndex {
   Future<void> _writes = Future.value();
 
   static Future<File> _defaultFile() async {
-    final dir = await getApplicationSupportDirectory();
+    final dir = await Native.supportDir();
     return File('${dir.path}/media_index.json');
   }
 

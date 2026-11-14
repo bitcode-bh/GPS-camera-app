@@ -1,4 +1,4 @@
-import 'package:intl/intl.dart';
+import '../core/date_format.dart';
 
 import 'coordinates.dart';
 

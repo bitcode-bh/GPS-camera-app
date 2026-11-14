@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'prefs.dart';
 
 import '../models/template.dart';
 
@@ -12,13 +12,13 @@ class TemplateController extends ChangeNotifier {
   TemplateController._();
   static final TemplateController instance = TemplateController._();
 
-  SharedPreferences? _prefs;
+  Prefs? _prefs;
   final _saved = <String, String>{};
   List<String> get savedNames => _saved.keys.toList(growable: false);
 
   TemplateConfig config = TemplateConfig.forTemplate(StampTemplate.minimal);
 
-  void attach(SharedPreferences prefs) {
+  void attach(Prefs prefs) {
     _prefs = prefs;
     _saved.clear();
     final stored = prefs.getString('savedTemplates');

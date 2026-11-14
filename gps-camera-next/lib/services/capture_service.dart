@@ -2,9 +2,8 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
+import 'native.dart';
 import 'package:flutter/services.dart';
-import 'package:gal/gal.dart';
-import 'package:path_provider/path_provider.dart';
 
 /// Turns a framed capture into files in the device gallery.
 ///
@@ -152,13 +151,6 @@ class CaptureService {
             '${stamped ? 'GPS_stamped' : 'GPS_video'}_${taken.millisecondsSinceEpoch}.mp4',
         'takenMs': taken.millisecondsSinceEpoch,
       });
-    } on MissingPluginException {
-      try {
-        await Gal.putVideo(path, album: 'GPS Camera Next');
-        return '';
-      } catch (_) {
-        return null;
-      }
     } catch (_) {
       return null;
     }
@@ -176,7 +168,7 @@ class CaptureService {
   /// Open the system gallery app.
   Future<void> openGallery() async {
     try {
-      await Gal.open();
+      await Native.openGallery();
     } catch (_) {}
   }
 
@@ -185,7 +177,7 @@ class CaptureService {
   /// duplicates.
   Future<void> migrateLegacyCaptures() async {
     try {
-      final documents = await getApplicationDocumentsDirectory();
+      final documents = await Native.documentsDir();
       final captures = Directory('${documents.path}/captures');
       if (await captures.exists()) {
         final files = await captures.list().toList();

@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:gps_camera_next/state/prefs.dart';
 import 'package:gps_camera_next/screens/camera/camera_screen.dart';
 import 'package:gps_camera_next/state/settings_controller.dart';
 import 'package:gps_camera_next/state/template_controller.dart';
@@ -21,15 +21,13 @@ void main() {
       addTearDown(() => directory.deleteSync(recursive: true));
       await tester.binding.setSurfaceSize(size);
       addTearDown(() => tester.binding.setSurfaceSize(null));
-      SharedPreferences.setMockInitialValues({});
-      final preferences = await SharedPreferences.getInstance();
+      final preferences = Prefs.memory();
       SettingsController.instance.attach(preferences);
       TemplateController.instance.attach(preferences);
       final messenger = tester.binding.defaultBinaryMessenger;
       for (final name in [
-        'hemanthraj/flutter_compass',
-        'dev.fluttercommunity.plus/sensors/method',
-        'dev.fluttercommunity.plus/sensors/accelerometer',
+        'com.gpscamera.gps_camera_next/heading',
+        'com.gpscamera.gps_camera_next/gravity',
         'com.gpscamera.gps_camera_next/gallery',
       ]) {
         messenger.setMockMethodCallHandler(
@@ -46,8 +44,10 @@ void main() {
         (_) async => false,
       );
       messenger.setMockMethodCallHandler(
-        const MethodChannel('plugins.flutter.io/path_provider'),
-        (_) async => directory.path,
+        const MethodChannel('com.gpscamera.gps_camera_next/platform'),
+        (call) async => call.method == 'dirs'
+            ? {'support': directory.path, 'documents': directory.path}
+            : null,
       );
       await tester.pumpWidget(const MaterialApp(home: CameraScreen()));
       await tester.pump(const Duration(milliseconds: 200));

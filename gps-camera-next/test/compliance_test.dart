@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:gps_camera_next/models/map_kind.dart';
 import 'package:gps_camera_next/models/template.dart';
 import 'package:gps_camera_next/state/template_controller.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:gps_camera_next/state/prefs.dart';
 
 /// Guards for the Google Play compliance fixes (docs/publishing).
 void main() {
@@ -29,11 +29,8 @@ void main() {
 
   test('a saved weather stamp falls back to a supported template', () async {
     final weather = TemplateConfig.forTemplate(StampTemplate.weather);
-    SharedPreferences.setMockInitialValues({
-      'templateConfig': weather.encode(),
-    });
     final controller = TemplateController.instance
-      ..attach(await SharedPreferences.getInstance());
+      ..attach(Prefs.memory({'templateConfig': weather.encode()}));
     expect(controller.config.template, isNot(StampTemplate.weather));
     expect(controller.config.fields.intersection(unsupportedFields), isEmpty);
   });

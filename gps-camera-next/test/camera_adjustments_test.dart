@@ -151,11 +151,10 @@ void main() {
         final messenger = tester.binding.defaultBinaryMessenger;
         final wb = <int?>[];
         for (final name in [
-          'hemanthraj/flutter_compass',
-          'dev.fluttercommunity.plus/sensors/method',
-          'dev.fluttercommunity.plus/sensors/accelerometer',
+          'com.gpscamera.gps_camera_next/heading',
+          'com.gpscamera.gps_camera_next/gravity',
+          'com.gpscamera.gps_camera_next/platform',
           'flutter.baseflow.com/geolocator',
-          'plugins.flutter.io/path_provider',
         ]) {
           final channel = MethodChannel(name);
           messenger.setMockMethodCallHandler(channel, (_) async => null);
@@ -214,8 +213,8 @@ void main() {
         expect(tester.getCenter(zoomHint).dy, closeTo(finder.center.dy, .1));
         Future<void> rotate(double x, double y) async {
           await messenger.handlePlatformMessage(
-            'dev.fluttercommunity.plus/sensors/accelerometer',
-            const StandardMethodCodec().encodeSuccessEnvelope([x, y, 0.0, 0.0]),
+            'com.gpscamera.gps_camera_next/gravity',
+            const StandardMethodCodec().encodeSuccessEnvelope([x, y, 0.0]),
             (_) {},
           );
           await tester.pumpAndSettle();

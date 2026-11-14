@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'state/prefs.dart';
 
 import 'core/theme.dart';
 import 'core/widgets/stash_glass.dart';
@@ -23,7 +23,7 @@ Future<void> main() async {
   );
 
   await StashGlass.prepare();
-  final prefs = await SharedPreferences.getInstance();
+  final prefs = await Prefs.load();
   SettingsController.instance.attach(prefs);
   TemplateController.instance.attach(prefs);
 

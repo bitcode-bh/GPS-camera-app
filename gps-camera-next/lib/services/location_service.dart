@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter/foundation.dart';
+
+import 'native.dart';
 
 import '../models/geo_data.dart';
 
@@ -236,34 +237,33 @@ class LocationService {
 
   Future<void> _reverseGeocode(double lat, double lon) async {
     try {
-      final marks = await placemarkFromCoordinates(
+      final p = await Native.geocode(
         lat,
         lon,
       ).timeout(const Duration(seconds: 4));
-      if (marks.isNotEmpty) {
-        final p = marks.first;
+      if (p != null) {
         String j(Iterable<String?> parts) => parts
             .where((e) => e != null && e.trim().isNotEmpty)
             .map((e) => e!.trim())
             .toSet()
             .join(', ');
 
-        _place = j([p.locality, p.administrativeArea, p.country]);
+        _place = j([p['locality'], p['administrativeArea'], p['country']]);
         _short = _place;
         _full = j([
-          p.name,
-          p.thoroughfare,
-          p.subLocality,
-          p.locality,
-          p.administrativeArea,
-          p.postalCode,
-          p.country,
+          p['name'],
+          p['thoroughfare'],
+          p['subLocality'],
+          p['locality'],
+          p['administrativeArea'],
+          p['postalCode'],
+          p['country'],
         ]);
-        _city = p.locality ?? '';
-        _region = p.administrativeArea ?? '';
-        _country = p.country ?? '';
-        _iso = p.isoCountryCode ?? '';
-        _flag = _flagFromIso(p.isoCountryCode);
+        _city = p['locality'] ?? '';
+        _region = p['administrativeArea'] ?? '';
+        _country = p['country'] ?? '';
+        _iso = p['isoCountryCode'] ?? '';
+        _flag = _flagFromIso(p['isoCountryCode']);
       }
     } catch (_) {
       // No on-device geocoder (some budget phones). The stamp then shows
