@@ -149,6 +149,32 @@ void main() {
     expect(filter.estimate!.speed, 0);
   });
 
+  test('speed from weak fixes does not drag a still phone', () {
+    // Seen indoors: a phone on a desk, ±24 m fixes claiming 3 m/s due east.
+    final filter = PositionFilter();
+    filter.update(at(0, accuracy: 10, speed: 0));
+    for (var i = 1; i <= 12; i++) {
+      filter.update(
+        at(
+          i * 5.0,
+          accuracy: 24,
+          speed: 3,
+          heading: 90,
+          east: i.isEven ? 4 : -4,
+        ),
+      );
+    }
+    expect(offset(filter.estimate!), lessThan(6));
+  });
+
+  test('accuracy floor is the best fix of the last 20 s', () {
+    final filter = PositionFilter();
+    filter.update(at(0, accuracy: 9));
+    filter.update(at(5, accuracy: 30));
+    expect(filter.estimate!.accuracy, greaterThanOrEqualTo(9));
+    expect(filter.estimate!.accuracy, lessThan(30));
+  });
+
   group('signal filters', () {
     test('low-pass smooths by time, not sample count', () {
       final fast = LowPass(1);

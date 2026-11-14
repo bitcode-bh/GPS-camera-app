@@ -23,7 +23,8 @@ enum FilterResult {
 /// shared variance. Each fix is weighted by its reported accuracy: a ±5 m fix
 /// pulls hard and a ±35 m fix barely nudges, so the indoor mix of Wi-Fi and
 /// weak GPS fixes averages instead of jumping. Between fixes the estimate
-/// moves along the fix's own course when that is trustworthy (≥ 2 m/s), and
+/// moves along the fix's own course when that is trustworthy (≥ 3 m/s, from
+/// a fix of ±[motionMaxAccuracy] or better), and
 /// otherwise its uncertainty grows with the distance it could have travelled.
 ///
 /// Guards, adapted from the Trip Tracker position estimator:
@@ -53,8 +54,8 @@ class PositionFilter {
   Fix? _last; // the last fix used
   DateTime? _lastUsedAt;
   int _rejectedInRow = 0;
-  double _bestAccuracy = double.infinity;
-  DateTime? _bestAt;
+  // Accuracy of each fix used in the last [bestFixWindow].
+  final _recent = <(DateTime, double)>[];
 
   bool get ready => !_anchorLat.isNaN;
 
@@ -64,8 +65,7 @@ class PositionFilter {
     _last = null;
     _lastUsedAt = null;
     _rejectedInRow = 0;
-    _bestAccuracy = double.infinity;
-    _bestAt = null;
+    _recent.clear();
   }
 
   /// Feeds one fix. When the result is [FilterResult.used], [estimate] is the
@@ -108,6 +108,7 @@ class PositionFilter {
     // is not moving. Only when the device reports a speed at all.
     if (fix.speed >= 0 &&
         fix.speed < stationarySpeed &&
+        accuracy <= motionMaxAccuracy &&
         distance < math.max(holdFactor * accuracy, minHold)) {
       r *= stationaryWeight;
     }
@@ -131,10 +132,9 @@ class PositionFilter {
     if (!ready || last == null) return null;
     final lat = _anchorLat + _y / earthRadius * _radToDeg;
     final lon = _anchorLon + _x / (earthRadius * _cosAnchor) * _radToDeg;
-    final best =
-        _bestAt != null && last.timestamp.difference(_bestAt!) <= bestFixWindow
-        ? _bestAccuracy
-        : 0.0;
+    final best = _recent.isEmpty
+        ? 0.0
+        : _recent.map((r) => r.$2).reduce(math.min);
     return Fix(
       latitude: lat,
       longitude: ((lon + 540) % 360) - 180,
@@ -168,19 +168,16 @@ class PositionFilter {
     _updateAltitude(fix, accuracy, 0);
     _rejectedInRow = 0;
     // Accuracy from before the move says nothing about the new place.
-    _bestAccuracy = double.infinity;
+    _recent.clear();
     _used(fix, accuracy);
   }
 
   void _used(Fix fix, double accuracy) {
     _last = fix;
     _lastUsedAt = fix.timestamp;
-    final bestExpired =
-        _bestAt == null || fix.timestamp.difference(_bestAt!) > bestFixWindow;
-    if (bestExpired || accuracy <= _bestAccuracy) {
-      _bestAccuracy = accuracy;
-      _bestAt = fix.timestamp;
-    }
+    _recent
+      ..add((fix.timestamp, accuracy))
+      ..removeWhere((r) => fix.timestamp.difference(r.$1) > bestFixWindow);
   }
 
   /// Position and variance moved on by [seconds] from the last used fix.
@@ -189,9 +186,11 @@ class PositionFilter {
     var y = _y;
     var p = _p;
     final dt = math.min(seconds, maxPredict.inMilliseconds / 1000);
-    final v = last.speed;
+    // Speed and course from a weak fix are noise: indoors a phone lying still
+    // reports 2–3 m/s from ±25 m fixes. Treat them as unknown.
+    final v = last.accuracy <= motionMaxAccuracy ? last.speed : -1.0;
     if (v >= stationarySpeed) {
-      // A fix's course is only meaningful at speed (2 m/s ramping to 5 m/s);
+      // A fix's course is only meaningful at speed (3 m/s ramping to 8 m/s);
       // the untrusted share of the motion becomes uncertainty instead.
       final trust = last.heading >= 0
           ? ((v - courseTrustFrom) / (courseTrustFull - courseTrustFrom)).clamp(
@@ -259,14 +258,17 @@ class PositionFilter {
 
   // Gates.
   static const maxUsableAccuracy = 40.0;
-  static const starvedAfter = Duration(seconds: 8);
+  static const starvedAfter = Duration(seconds: 15);
   static const gateSigma = 3.5;
   static const minGate = 15.0; // never tighter than urban multipath
   static const relockAfter = 3;
   static const stationarySpeed = 0.7; // m/s
+
+  /// Speed and course are only trusted from fixes this accurate, in metres.
+  static const motionMaxAccuracy = 20.0;
   static const driftSpeed = 0.5; // m/s
-  static const courseTrustFrom = 2.0; // m/s
-  static const courseTrustFull = 5.0; // m/s
+  static const courseTrustFrom = 3.0; // m/s: above walking pace
+  static const courseTrustFull = 8.0; // m/s: ≈ 29 km/h
   static const holdFactor = 2.0;
   static const minHold = 10.0;
   static const stationaryWeight = 10.0;
