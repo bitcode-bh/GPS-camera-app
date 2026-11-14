@@ -189,6 +189,12 @@ class _MediaMapState extends State<MediaMap> {
 
   @override
   Widget build(BuildContext context) {
+    if (!MapTiles.available) {
+      return const _MapMessage(
+        title: 'Map unavailable',
+        detail: 'This build has no map service configured.',
+      );
+    }
     final items = _library.mapItems;
     final phase = mapPhase(_library.status, items.length, _selected != null);
     if (phase == MapPhase.uninitialized || phase == MapPhase.loadingMedia) {
@@ -260,7 +266,8 @@ class _MediaMapState extends State<MediaMap> {
             TileLayer(
               key: ValueKey('base-$_tileEpoch-${kind.name}'),
               urlTemplate: kind.tileUrl,
-              userAgentPackageName: 'com.gpscamera.gps_camera_next',
+              userAgentPackageName: MapTiles.userAgent,
+              tileDimension: kind.tileDimension,
               errorTileCallback: (_, _, _) {
                 if (!_tilesFailed && mounted) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -273,7 +280,8 @@ class _MediaMapState extends State<MediaMap> {
               TileLayer(
                 key: ValueKey('labels-$_tileEpoch'),
                 urlTemplate: kind.overlayUrl!,
-                userAgentPackageName: 'com.gpscamera.gps_camera_next',
+                userAgentPackageName: MapTiles.userAgent,
+                tileDimension: kind.overlayDimension,
                 errorTileCallback: (_, _, _) {},
               ),
             MarkerLayer(
@@ -300,18 +308,26 @@ class _MediaMapState extends State<MediaMap> {
         Positioned(
           left: 8,
           top: widget.topPadding + 6,
-          // Readable on any imagery: the tile terms require visible credit.
-          child: const IgnorePointer(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.all(Radius.circular(4)),
-              ),
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                child: Text(
-                  'Map data © Esri',
-                  style: TextStyle(fontSize: 10, color: Colors.white),
+          right: 8,
+          // Esri requires "Powered by Esri" and data credit on the map.
+          child: IgnorePointer(
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: DecoratedBox(
+                decoration: const BoxDecoration(
+                  color: Colors.black54,
+                  borderRadius: BorderRadius.all(Radius.circular(4)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 5,
+                    vertical: 2,
+                  ),
+                  child: Text(
+                    'Powered by Esri · ${kind.dataCredit}',
+                    maxLines: 2,
+                    style: const TextStyle(fontSize: 10, color: Colors.white),
+                  ),
                 ),
               ),
             ),

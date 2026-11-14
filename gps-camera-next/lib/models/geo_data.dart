@@ -2,7 +2,7 @@ import 'package:intl/intl.dart';
 
 import 'coordinates.dart';
 
-/// Address verbosity for the stamp (mirrors the reference app's long/short).
+/// Address verbosity for the stamp: long or short.
 enum AddressFormat { long, short }
 
 /// Measurement systems for altitude/speed and temperature units.

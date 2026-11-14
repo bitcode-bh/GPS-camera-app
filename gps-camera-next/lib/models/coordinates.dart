@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'plus_code.dart';
 
-/// The coordinate display formats offered (mirrors the reference app).
+/// The coordinate display formats offered.
 enum CoordFormat { decimal, dms, utm, mgrs, plusCode }
 
 extension CoordFormatX on CoordFormat {

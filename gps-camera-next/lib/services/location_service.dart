@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:geocoding/geocoding.dart';
@@ -55,7 +53,9 @@ class LocationService {
 
   /// Status changes for as long as someone listens. Restarts itself when the
   /// device's location switch changes, and stops all GPS work on cancel.
-  Stream<GpsStatus> watch() {
+  /// [ask] shows the system permission prompt when needed. Pass false to
+  /// only report that permission is required (no prompt).
+  Stream<GpsStatus> watch({bool ask = true}) {
     late final StreamController<GpsStatus> out;
     StreamSubscription<Position>? positions;
     StreamSubscription<ServiceStatus>? service;
@@ -81,7 +81,7 @@ class LocationService {
           return;
         }
         var permission = await Geolocator.checkPermission();
-        if (permission == LocationPermission.denied) {
+        if (permission == LocationPermission.denied && ask) {
           permission = await Geolocator.requestPermission();
         }
         if (!current()) return;
@@ -266,70 +266,11 @@ class LocationService {
         _flag = _flagFromIso(p.isoCountryCode);
       }
     } catch (_) {
-      // platform geocoder unavailable on some devices — fall through to network
-    }
-
-    // Many budget devices have no on-device geocoder backend, so the platform
-    // call returns nothing. Fall back to OpenStreetMap's Nominatim service.
-    if (_full.isEmpty) {
-      await _nominatim(lat, lon);
-    }
-  }
-
-  Future<void> _nominatim(double lat, double lon) async {
-    HttpClient? client;
-    try {
-      final uri = Uri.parse(
-        'https://nominatim.openstreetmap.org/reverse?format=jsonv2'
-        '&lat=$lat&lon=$lon&zoom=18&addressdetails=1',
-      );
-      client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
-      final req = await client.getUrl(uri).timeout(const Duration(seconds: 8));
-      req.headers.set(HttpHeaders.userAgentHeader, 'gps_camera_next/1.0');
-      final resp = await req.close().timeout(const Duration(seconds: 8));
-      if (resp.statusCode != 200) return;
-      final body = await resp
-          .transform(utf8.decoder)
-          .join()
-          .timeout(const Duration(seconds: 8));
-      final json = jsonDecode(body) as Map<String, dynamic>;
-
-      final display = (json['display_name'] as String?)?.trim();
-      if (display == null || display.isEmpty) return;
-      _full = display;
-
-      final addr = json['address'] as Map<String, dynamic>?;
-      if (addr != null) {
-        String? pick(List<String> keys) {
-          for (final k in keys) {
-            final v = addr[k];
-            if (v != null && '$v'.trim().isNotEmpty) return '$v'.trim();
-          }
-          return null;
-        }
-
-        final city = pick(['city', 'town', 'village', 'suburb', 'county']);
-        final state = pick(['state', 'region']);
-        final country = pick(['country']);
-        _short = [
-          city,
-          state,
-          country,
-        ].where((e) => e != null && e.isNotEmpty).join(', ');
-        _place = _short.isEmpty ? display : _short;
-        _city = city ?? '';
-        _region = state ?? '';
-        _country = country ?? '';
-        _iso = (addr['country_code'] as String?)?.toUpperCase() ?? '';
-        _flag = _flagFromIso(_iso);
-      } else {
-        _place = display;
-        _short = display;
-      }
-    } catch (_) {
-      // network failed — address stays empty → stamp shows "Address unavailable"
-    } finally {
-      client?.close();
+      // No on-device geocoder (some budget phones). The stamp then shows
+      // coordinates without an address. A public geocoder is deliberately not
+      // used: OpenStreetMap's Nominatim policy forbids automatic, periodic app
+      // lookups, and any paid geocoder must allow storing results, since an
+      // address burned into a photo is stored.
     }
   }
 

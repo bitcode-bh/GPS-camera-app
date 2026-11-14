@@ -87,14 +87,14 @@ class MiniMap extends StatelessWidget {
                 children: [
                   TileLayer(
                     urlTemplate: kind.tileUrl,
-                    userAgentPackageName: 'com.gpscamera.gps_camera_next',
-                    tileDimension: 256,
+                    userAgentPackageName: MapTiles.userAgent,
+                    tileDimension: kind.tileDimension,
                   ),
                   if (kind.overlayUrl != null)
                     TileLayer(
                       urlTemplate: kind.overlayUrl!,
-                      userAgentPackageName: 'com.gpscamera.gps_camera_next',
-                      tileDimension: 256,
+                      userAgentPackageName: MapTiles.userAgent,
+                      tileDimension: kind.overlayDimension,
                     ),
                   CircleLayer(
                     circles: [
@@ -139,6 +139,9 @@ class MiniMap extends StatelessWidget {
                   ),
                 ),
               ),
+              // Esri requires credit on or near the map; "Esri" is the
+              // minimum where space is tight. Part of every capture.
+              const Positioned(right: 4, bottom: 3, child: _EsriCredit()),
               if (!compact) ...[
                 if (showHints) ...[
                   Positioned(
@@ -171,6 +174,22 @@ class MiniMap extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The minimum Esri credit, legible over any imagery.
+class _EsriCredit extends StatelessWidget {
+  const _EsriCredit();
+
+  @override
+  Widget build(BuildContext context) => const Text(
+    'Esri',
+    style: TextStyle(
+      fontSize: 7.5,
+      fontWeight: FontWeight.w600,
+      color: Color(0xF2FFFFFF),
+      shadows: [Shadow(color: Color(0xCC000000), blurRadius: 2)],
+    ),
+  );
 }
 
 class _Tag extends StatelessWidget {
@@ -368,6 +387,7 @@ void showMapZoomPopup(
   required MapKind kind,
   required double initialZoom,
 }) {
+  if (!MapTiles.available) return;
   showDialog<void>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.6),
@@ -485,16 +505,14 @@ class _MapZoomPopupState extends State<_MapZoomPopup> {
                         children: [
                           TileLayer(
                             urlTemplate: widget.kind.tileUrl,
-                            userAgentPackageName:
-                                'com.gpscamera.gps_camera_next',
-                            tileDimension: 256,
+                            userAgentPackageName: MapTiles.userAgent,
+                            tileDimension: widget.kind.tileDimension,
                           ),
                           if (widget.kind.overlayUrl != null)
                             TileLayer(
                               urlTemplate: widget.kind.overlayUrl!,
-                              userAgentPackageName:
-                                  'com.gpscamera.gps_camera_next',
-                              tileDimension: 256,
+                              userAgentPackageName: MapTiles.userAgent,
+                              tileDimension: widget.kind.overlayDimension,
                             ),
                           CircleLayer(
                             circles: [

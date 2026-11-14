@@ -4,8 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../core/design/palette.dart';
 
-/// Predefined geostamp styles shown in the template gallery (mirrors the
-/// reference app's template set).
+/// Predefined geostamp styles shown in the template gallery.
 enum StampTemplate {
   advance,
   classic,
@@ -46,6 +45,27 @@ extension StampTemplateX on StampTemplate {
   bool get isNew =>
       this == StampTemplate.weather || this == StampTemplate.survey;
 }
+
+/// Templates the app offers. Weather is held back until the app has a licensed
+/// weather data source; without one its fields would always be empty.
+const offeredTemplates = <StampTemplate>[
+  StampTemplate.advance,
+  StampTemplate.classic,
+  StampTemplate.dateTime,
+  StampTemplate.scanLocation,
+  StampTemplate.reporting,
+  StampTemplate.navigationCompass,
+  StampTemplate.minimal,
+  StampTemplate.survey,
+];
+
+/// Fields that need data the app does not collect (weather).
+const unsupportedFields = <StampField>{
+  StampField.temperature,
+  StampField.wind,
+  StampField.humidity,
+  StampField.pressure,
+};
 
 /// Every toggleable line that can appear on a custom stamp.
 enum StampField {

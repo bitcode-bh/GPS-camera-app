@@ -12,10 +12,33 @@ provider pages (linked per finding). Third-party summaries are marked as such.
 
 ## Verdict
 
-**NOT READY FOR PUBLICATION.** Five blockers: unlicensed use of Esri map
+**NOT READY FOR PUBLICATION.** (Code fixes since applied — see Remediation status; owner actions remain.) Five blockers at audit time: unlicensed use of Esri map
 tiles, Nominatim use that breaks its usage policy, no privacy policy, no
 upload signing key, and an undeclared Data safety form. None needs a rewrite;
 all are fixable in days. Details and fixes below.
+
+## Remediation status (14 Nov 2026, after the audit)
+
+| ID | Status | What changed |
+| --- | --- | --- |
+| B1 | **Code ready; owner action** | `lib/models/map_kind.dart`: tiles use ArcGIS Location Platform endpoints with `--dart-define=ESRI_API_KEY=…` (static basemap tiles for streets/outdoor/labels, `ibasemaps-api` World_Imagery). Without a key, release builds show no Esri map (stamp without map; Library map says "Map unavailable"); debug builds keep the public endpoints for development. Owner: create the key, restrict it, set a billing cap, confirm with Esri that stamp maps saved in photos are permitted. |
+| B2 | **Fixed** | Nominatim removed (`location_service.dart`). Addresses come from the on-device geocoder only; no address is shown when the device has none. |
+| B3 | **Partly fixed** | In-app Privacy screen (Settings → About → Privacy) with the summary and map-accuracy notice; `--dart-define=PRIVACY_POLICY_URL=…` shows the public policy link. Owner: publish the policy and enter it in Play Console. |
+| B4 | Owner action | Fill the Data safety form from `data-safety.md` (now without OSMF). |
+| B5 | Owner action | Upload key. |
+| H1 | **Fixed** | "Esri" credit inside the stamp mini-map (also in saved photos and videos); "Powered by Esri · data sources" on the Library map; About shows "Maps: Powered by Esri", "Addresses: Device geocoder". Data credits are the services' published credits; confirm against Esri's attribution endpoint once the key exists. |
+| H2/H3 | Owner action | Name, application ID and trademark searches. |
+| H4 | **Fixed** | Settings → About → Open-source licences (Flutter licence page plus AndroidX/Media3/CameraX/Kotlin Apache-2.0 notice). |
+| H5 | **Fixed** | `graphify` removed; WebView packages gone from the build. |
+| M1 | **Fixed** | "Reference app" comments removed; a test guards against their return. Template layouts still need an owner originality review. |
+| M2 | **Fixed** | Weather template and weather fields hidden; saved weather stamps migrate to the default template. |
+| M3 | **Fixed** | Explanation dialog before the location permission prompt ("Not now" keeps the app usable). |
+| M6 | **Fixed** | About shows the real version from the package. |
+| L1 | **Fixed** | Public geocoder removed; tile requests identify the app package. |
+| L2 | **Fixed** | Monochrome adaptive-icon layer added (also registered in `flutter_launcher_icons`). |
+| M4, M5, M7, L3 | Open | EXIF sharing note in onboarding, DPDP review, closed-test rule, cache headers. |
+
+Verification: `flutter analyze` clean; 91 tests pass (4 new compliance guards); release AAB builds. Not yet checked on a device (phone disconnected).
 
 ## What the app actually uses (from the code)
 

@@ -49,8 +49,8 @@ dependencies:
   share_plus: ^13.1.0
   flutter_compass: ^0.8.1
   sensors_plus: ^7.0.0
-  graphify: ^1.2.1
   video_player: ^2.14.1
+  package_info_plus: ^10.1.0
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -73,6 +73,7 @@ flutter_launcher_icons:
   background_color_ios: "#1C1C1E"
   adaptive_icon_background: "#1C1C1E"
   adaptive_icon_foreground: "assets/icons/app_icon_fg.png"
+  adaptive_icon_monochrome: "assets/icons/app_icon_mono.png"
   min_sdk_android: 21
 
 # For information on the generic Dart part of this file, see the

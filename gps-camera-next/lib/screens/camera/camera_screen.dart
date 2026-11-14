@@ -292,10 +292,60 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
-  void _startLocation() {
+  bool _locationStarting = false;
+
+  /// Explains why location is needed before Android asks for it, so the user
+  /// knows coordinates are sent to the map and address services.
+  Future<void> _beginLocation() async {
+    if (_locationStarting) return;
+    _locationStarting = true;
+    try {
+      var ask = true;
+      if (await Geolocator.checkPermission() == LocationPermission.denied) {
+        if (!mounted) return;
+        ask = await _explainLocation();
+      }
+      if (mounted && _wantCamera) _startLocation(ask: ask);
+    } catch (_) {
+      if (mounted && _wantCamera) _startLocation();
+    } finally {
+      _locationStarting = false;
+    }
+  }
+
+  Future<bool> _explainLocation() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Palette.surfaceSolid,
+        title: const Text('Location for your stamp'),
+        content: const Text(
+          'Location is used while the app is open to add coordinates, an '
+          'address and a small map to your photos and videos. To draw the map '
+          'and find the address, your position is sent to our map provider '
+          '(Esri) and your phone\'s address service. We don\'t store or sell '
+          'your location.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+    return ok ?? false;
+  }
+
+  void _startLocation({bool ask = true}) {
     _stopLocation();
     setState(() => _gps = const GpsStatus(GpsState.acquiring));
-    _geoSub = _location.watch().listen((status) {
+    _geoSub = _location.watch(ask: ask).listen((status) {
       if (!mounted) return;
       setState(() => _gps = status);
       _fixExpiry?.cancel();
@@ -359,7 +409,7 @@ class _CameraScreenState extends State<CameraScreen>
       _failCamera(error);
     } finally {
       // After the camera's own permission prompts, so dialogs never overlap.
-      if (_wantCamera && _geoSub == null) _startLocation();
+      if (_wantCamera && _geoSub == null) unawaited(_beginLocation());
     }
   });
 
@@ -707,7 +757,7 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   void _cycleTemplate(int dir) {
-    const v = StampTemplate.values;
+    const v = offeredTemplates;
     final i =
         (v.indexOf(_templates.config.template) + dir + v.length) % v.length;
     _templates.selectTemplate(v[i]);
@@ -1758,7 +1808,7 @@ class _CameraScreenState extends State<CameraScreen>
       GpsState.permissionRequired => (
         'Location permission needed',
         'Allow',
-        _startLocation,
+        _beginLocation,
       ),
       GpsState.permissionDenied => (
         'Location permission is off',

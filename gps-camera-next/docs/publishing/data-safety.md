@@ -24,9 +24,9 @@ Re-check after the map and geocoder changes (audit B1/B2).
 | Device or other IDs | No | No | — | — | None read. |
 
 Notes:
-- If the Nominatim fallback ships unchanged (not recommended — audit B2), the
-  OpenStreetMap Foundation is not your service provider: answer **Shared: Yes**
-  for precise location.
+- The Nominatim fallback has been removed (audit B2). Recipients of location
+  are Esri (map tiles, under your ArcGIS Location Platform account) and the
+  device's own geocoder.
 - User-chosen fields typed into the stamp (person name, phone number, project
   title) stay on the device and in the images the user saves; they are not
   collected.

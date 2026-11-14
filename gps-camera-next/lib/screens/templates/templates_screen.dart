@@ -70,10 +70,10 @@ class TemplatesScreen extends StatelessWidget {
         builder: (context, _) {
           return ListView.separated(
             padding: const EdgeInsets.fromLTRB(Insets.md, 6, Insets.md, 32),
-            itemCount: StampTemplate.values.length,
+            itemCount: offeredTemplates.length,
             separatorBuilder: (_, _) => const SizedBox(height: Insets.md),
             itemBuilder: (context, i) {
-              final t = StampTemplate.values[i];
+              final t = offeredTemplates[i];
               return _TemplateCard(
                 template: t,
                 selected: templates.config.template == t,

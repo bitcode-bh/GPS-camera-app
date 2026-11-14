@@ -40,6 +40,12 @@ class TemplateController extends ChangeNotifier {
         /* keep default */
       }
     }
+    // Weather is not offered (no weather data source): fall back to the default.
+    if (config.template == StampTemplate.weather) {
+      config.template = StampTemplate.advance;
+      config.fields = TemplateConfig.defaultsFor(StampTemplate.advance);
+    }
+    config.fields.removeAll(unsupportedFields);
     // Migrate away the old default branding title persisted by earlier builds.
     if (config.projectTitle.trim() == 'GPS Map Camera' ||
         config.projectTitle.trim() == 'GPS Camera') {

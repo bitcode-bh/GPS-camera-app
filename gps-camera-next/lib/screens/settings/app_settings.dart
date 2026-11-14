@@ -16,6 +16,7 @@ import '../../state/template_controller.dart';
 import '../camera/widgets/camera_design.dart';
 import '../templates/custom_template_editor.dart';
 import '../templates/templates_screen.dart';
+import 'legal.dart';
 
 /// App-settings categories. Map, coordinates and format/units are merged into a
 /// single **Display & Units** popup, so the strip stays down to three clean
@@ -391,11 +392,27 @@ class _SettingsPopup extends StatelessWidget {
           ),
         ];
       case SettingsCat.about:
-        return const [
-          _AboutRow(label: 'App', value: 'GPS Camera Next'),
-          _AboutRow(label: 'Version', value: '1.0.0'),
-          _AboutRow(label: 'Map tiles', value: '© Esri World Imagery'),
-          _AboutRow(label: 'Geocoding', value: '© OpenStreetMap'),
+        return [
+          const _AboutRow(label: 'App', value: 'GPS Camera Next'),
+          FutureBuilder<String>(
+            future: appVersion(),
+            builder: (context, version) =>
+                _AboutRow(label: 'Version', value: version.data ?? '—'),
+          ),
+          const _AboutRow(label: 'Maps', value: 'Powered by Esri'),
+          const _AboutRow(label: 'Addresses', value: 'Device geocoder'),
+          _AboutLink(label: 'Privacy', onTap: () => showPrivacy(context)),
+          _AboutLink(
+            label: 'Open-source licences',
+            onTap: () => showOpenSourceLicences(context),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text(
+              mapAccuracyNotice,
+              style: AppText.body.copyWith(fontSize: 12, height: 1.35),
+            ),
+          ),
         ];
     }
   }
@@ -479,6 +496,30 @@ class _NavTile extends StatelessWidget {
       ),
     );
   }
+}
+
+class _AboutLink extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  const _AboutLink({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    child: Pressable(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        child: Row(
+          children: [
+            Text(label, style: AppText.body),
+            const Spacer(),
+            const Icon(Icons.chevron_right, size: 18, color: Colors.white54),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 class _AboutRow extends StatelessWidget {

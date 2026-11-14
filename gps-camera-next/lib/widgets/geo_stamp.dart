@@ -75,7 +75,7 @@ class GeoStamp extends StatelessWidget {
       availableWidth * 0.45,
     );
     final spacing = _s * config.spacing.scale;
-    final mapWidget = geo.hasLocation && config.showsMap
+    final mapWidget = geo.hasLocation && config.showsMap && MapTiles.available
         ? SizedBox(
             width: mapWidth,
             height: mapWidth * (118 / 136),

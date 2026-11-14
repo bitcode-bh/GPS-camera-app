@@ -160,14 +160,8 @@ class _CustomTemplateEditorState extends State<CustomTemplateEditor> {
       StampField.siteId,
       StampField.remarks,
     ],
-    'Environment': [
-      StampField.temperature,
-      StampField.compass,
-      StampField.magneticField,
-      StampField.wind,
-      StampField.humidity,
-      StampField.pressure,
-    ],
+    // Weather fields are left out until the app has a weather data source.
+    'Environment': [StampField.compass, StampField.magneticField],
   };
 
   @override
