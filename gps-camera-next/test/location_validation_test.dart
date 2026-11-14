@@ -1,26 +1,20 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:gps_camera_next/models/geo_data.dart';
 import 'package:gps_camera_next/services/location_service.dart';
+import 'package:gps_camera_next/services/native_location.dart';
 
 void main() {
   final now = DateTime.utc(2026, 11, 9);
-  Position fix(
+  Fix fix(
     int seconds, {
     double lat = 12,
     double lon = 77,
     double accuracy = 5,
-  }) => Position(
+  }) => Fix(
     latitude: lat,
     longitude: lon,
     timestamp: now.add(Duration(seconds: seconds)),
     accuracy: accuracy,
-    altitude: 0,
-    altitudeAccuracy: 0,
-    heading: 0,
-    headingAccuracy: 0,
-    speed: 0,
-    speedAccuracy: 0,
   );
 
   test('accepts a fresh fix and rejects stale, future and invalid data', () {

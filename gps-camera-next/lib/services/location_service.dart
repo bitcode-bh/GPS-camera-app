@@ -1,10 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:geolocator/geolocator.dart';
-import 'package:flutter/foundation.dart';
-
 import 'native.dart';
+import 'native_location.dart';
 
 import '../models/geo_data.dart';
 
@@ -47,7 +45,7 @@ class LocationService {
   String _country = '';
   String _flag = '';
   String _iso = '';
-  Position? _lastAccepted;
+  Fix? _lastAccepted;
   bool _geocoding = false;
 
   static const acquireTimeout = Duration(seconds: 20);
@@ -58,8 +56,8 @@ class LocationService {
   /// only report that permission is required (no prompt).
   Stream<GpsStatus> watch({bool ask = true}) {
     late final StreamController<GpsStatus> out;
-    StreamSubscription<Position>? positions;
-    StreamSubscription<ServiceStatus>? service;
+    StreamSubscription<Fix>? positions;
+    StreamSubscription<bool>? service;
     Timer? acquiring;
     var run = 0;
     var approximate = false;
@@ -77,68 +75,52 @@ class LocationService {
       await positions?.cancel();
       positions = null;
       try {
-        if (!await Geolocator.isLocationServiceEnabled()) {
+        var access = await NativeLocation.access();
+        if (!access.serviceEnabled) {
           if (current()) emit(GpsState.disabled);
           return;
         }
-        var permission = await Geolocator.checkPermission();
-        if (permission == LocationPermission.denied && ask) {
-          permission = await Geolocator.requestPermission();
+        if (access.permit == LocationPermit.denied && ask) {
+          access = await NativeLocation.request();
         }
         if (!current()) return;
-        if (permission == LocationPermission.deniedForever) {
+        if (access.permit == LocationPermit.deniedForever) {
           return emit(GpsState.permissionDenied);
         }
-        if (permission == LocationPermission.denied ||
-            permission == LocationPermission.unableToDetermine) {
+        if (access.permit != LocationPermit.granted) {
           return emit(GpsState.permissionRequired);
         }
-        try {
-          approximate =
-              await Geolocator.getLocationAccuracy() ==
-              LocationAccuracyStatus.reduced;
-        } catch (_) {
-          approximate = false;
-        }
-        if (!current()) return;
+        approximate = access.approximate;
         emit(GpsState.acquiring);
         acquiring = Timer(acquireTimeout, () {
           if (current()) emit(GpsState.unavailable);
         });
-        positions =
-            Geolocator.getPositionStream(
-              locationSettings: defaultTargetPlatform == TargetPlatform.android
-                  ? AndroidSettings(
-                      accuracy: LocationAccuracy.high,
-                      intervalDuration: const Duration(seconds: 5),
-                    )
-                  : const LocationSettings(accuracy: LocationAccuracy.high),
-            ).listen(
-              (position) {
-                if (!current() ||
-                    !acceptsFix(position, _lastAccepted, DateTime.now())) {
-                  return;
-                }
-                acquiring?.cancel();
-                _lastAccepted = position;
-                // Publish the position now. The address follows when resolved.
+        positions = NativeLocation.positions().listen(
+          (position) {
+            if (!current() ||
+                !acceptsFix(position, _lastAccepted, DateTime.now())) {
+              return;
+            }
+            acquiring?.cancel();
+            _lastAccepted = position;
+            // Publish the position now. The address follows when resolved.
+            emit(GpsState.fix, _toGeo(position));
+            _resolveAddress(position, () {
+              if (current() && identical(position, _lastAccepted)) {
                 emit(GpsState.fix, _toGeo(position));
-                _resolveAddress(position, () {
-                  if (current() && identical(position, _lastAccepted)) {
-                    emit(GpsState.fix, _toGeo(position));
-                  }
-                });
-              },
-              onError: (Object error) {
-                if (!current()) return;
-                acquiring?.cancel();
-                emit(
-                  error is LocationServiceDisabledException
-                      ? GpsState.disabled
-                      : GpsState.unavailable,
-                );
-              },
+              }
+            });
+          },
+          onError: (Object error) {
+            if (!current()) return;
+            acquiring?.cancel();
+            emit(
+              error is LocationDisabled
+                  ? GpsState.disabled
+                  : GpsState.unavailable,
             );
+          },
+        );
       } catch (_) {
         if (current()) emit(GpsState.unavailable);
       }
@@ -148,7 +130,7 @@ class LocationService {
       onListen: () {
         start();
         try {
-          service = Geolocator.getServiceStatusStream().listen(
+          service = NativeLocation.switchChanges().listen(
             (_) => start(),
             onError: (Object _) {},
           );
@@ -167,7 +149,7 @@ class LocationService {
     return out.stream;
   }
 
-  static bool acceptsFix(Position fix, Position? previous, DateTime now) {
+  static bool acceptsFix(Fix fix, Fix? previous, DateTime now) {
     if (!GeoData.isFreshFix(fix.timestamp, now) ||
         !fix.latitude.isFinite ||
         fix.latitude.abs() > 90 ||
@@ -193,7 +175,7 @@ class LocationService {
       _geocodedAt != null && _geocodedAt!.distanceTo(here) <= 25;
 
   /// Looks up the address without holding back the fix. One lookup at a time.
-  Future<void> _resolveAddress(Position p, void Function() onResolved) async {
+  Future<void> _resolveAddress(Fix p, void Function() onResolved) async {
     final here = LatLngLite(p.latitude, p.longitude);
     if (_geocoding || _hasAddressFor(here)) return;
     _geocoding = true;
@@ -207,7 +189,7 @@ class LocationService {
     onResolved();
   }
 
-  GeoData _toGeo(Position p) {
+  GeoData _toGeo(Fix p) {
     // An address resolved for another place is never shown for this one.
     final known = _hasAddressFor(LatLngLite(p.latitude, p.longitude));
     String at(String value) => known ? value : '';

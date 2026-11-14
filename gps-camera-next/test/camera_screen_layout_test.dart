@@ -40,8 +40,10 @@ void main() {
         (_) async => [],
       );
       messenger.setMockMethodCallHandler(
-        const MethodChannel('flutter.baseflow.com/geolocator'),
-        (_) async => false,
+        const MethodChannel('com.gpscamera.gps_camera_next/location'),
+        (call) async => call.method == 'status'
+            ? {'service': false, 'permission': 'granted'}
+            : false,
       );
       messenger.setMockMethodCallHandler(
         const MethodChannel('com.gpscamera.gps_camera_next/platform'),

@@ -19,6 +19,7 @@ class MainActivity : FlutterActivity() {
     private val channel = "com.gpscamera.gps_camera_next/gallery"
     private var library: MediaLibraryChannel? = null
     private var platform: PlatformChannel? = null
+    private var location: LocationChannel? = null
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         library?.dispose()
@@ -30,6 +31,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         if (library?.onRequestPermissionsResult(requestCode, grantResults) == true) return
+        if (location?.onRequestPermissionsResult(requestCode) == true) return
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     }
 
@@ -44,6 +46,7 @@ class MainActivity : FlutterActivity() {
         val messenger = flutterEngine.dartExecutor.binaryMessenger
         library = MediaLibraryChannel(this, messenger)
         platform = PlatformChannel(this, messenger)
+        location = LocationChannel(this, messenger)
         MethodChannel(
             messenger, channel, StandardMethodCodec.INSTANCE, messenger.makeBackgroundTaskQueue()
         ).setMethodCallHandler { call, result ->

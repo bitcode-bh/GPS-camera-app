@@ -154,10 +154,16 @@ void main() {
           'com.gpscamera.gps_camera_next/heading',
           'com.gpscamera.gps_camera_next/gravity',
           'com.gpscamera.gps_camera_next/platform',
-          'flutter.baseflow.com/geolocator',
+          'com.gpscamera.gps_camera_next/location',
         ]) {
           final channel = MethodChannel(name);
-          messenger.setMockMethodCallHandler(channel, (_) async => null);
+          // Location reports the device switch off: no prompt, no fixes.
+          messenger.setMockMethodCallHandler(
+            channel,
+            (call) async => call.method == 'status'
+                ? {'service': false, 'permission': 'granted'}
+                : null,
+          );
           addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
         }
         const adjustments = MethodChannel(

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 
 import '../../models/media_item.dart';
 import '../../services/capture_service.dart';
@@ -8,6 +7,7 @@ import '../../state/settings_controller.dart';
 import '../camera/widgets/camera_design.dart';
 import 'media_grid.dart';
 import 'media_map.dart';
+import '../../services/native_location.dart';
 import 'media_viewer.dart';
 
 /// Photos and videos captured by the app: a grid and a map of where the most
@@ -130,7 +130,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
           detail: 'Allow storage access to see your photos and videos.',
           action: _library.permanentlyDenied ? 'Open Settings' : 'Allow',
           onAction: _library.permanentlyDenied
-              ? Geolocator.openAppSettings
+              ? NativeLocation.openAppSettings
               : _library.refresh,
         );
       case LibraryStatus.error:

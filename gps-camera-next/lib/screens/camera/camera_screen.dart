@@ -7,7 +7,6 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:geolocator/geolocator.dart';
 
 import '../../core/design/palette.dart';
 import '../../core/design/text_styles.dart';
@@ -24,6 +23,7 @@ import '../../services/location_service.dart';
 import '../../services/media_image.dart';
 import '../../services/media_library.dart';
 import '../../services/native.dart';
+import '../../services/native_location.dart';
 import '../../state/settings_controller.dart';
 import '../../state/state_machine.dart';
 import '../../state/template_controller.dart';
@@ -302,7 +302,7 @@ class _CameraScreenState extends State<CameraScreen>
     _locationStarting = true;
     try {
       var ask = true;
-      if (await Geolocator.checkPermission() == LocationPermission.denied) {
+      if ((await NativeLocation.access()).permit == LocationPermit.denied) {
         if (!mounted) return;
         ask = await _explainLocation();
       }
@@ -374,7 +374,7 @@ class _CameraScreenState extends State<CameraScreen>
 
   Future<void> _openCameraSettings() async {
     try {
-      if (await Geolocator.openAppSettings()) return;
+      if (await NativeLocation.openAppSettings()) return;
     } catch (_) {}
     _toast('Open your device settings to allow camera access');
   }
@@ -1803,7 +1803,7 @@ class _CameraScreenState extends State<CameraScreen>
 
   /// Why there is no usable position, and the one action that helps.
   (String, String, VoidCallback)? _gpsNotice() {
-    Future<void> appSettings() => Geolocator.openAppSettings();
+    Future<void> appSettings() => NativeLocation.openAppSettings();
     final accuracy = _freshGeo?.accuracy;
     return switch (_gps.stateAt(DateTime.now())) {
       GpsState.permissionRequired => (
@@ -1819,7 +1819,7 @@ class _CameraScreenState extends State<CameraScreen>
       GpsState.disabled => (
         'Location is turned off',
         'Turn on',
-        Geolocator.openLocationSettings,
+        NativeLocation.openLocationSettings,
       ),
       GpsState.acquiring => ('GPS', 'Searching…', () {}),
       GpsState.stale ||
