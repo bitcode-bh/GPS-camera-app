@@ -11,6 +11,7 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.location.LocationRequest
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -119,7 +120,17 @@ class LocationChannel(private val activity: Activity, messenger: BinaryMessenger
             if (providers.isEmpty()) return events.error("unavailable", "No location provider", null)
             try {
                 for (provider in providers) {
-                    manager.requestLocationUpdates(provider, INTERVAL_MS, 0f, this, Looper.getMainLooper())
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        // Without an explicit request the fused provider runs
+                        // at "balanced" (Wi-Fi/cell) accuracy; a stamp needs GPS.
+                        val request = LocationRequest.Builder(INTERVAL_MS)
+                            .setQuality(LocationRequest.QUALITY_HIGH_ACCURACY)
+                            .setMinUpdateIntervalMillis(1000)
+                            .build()
+                        manager.requestLocationUpdates(provider, request, context.mainExecutor, this)
+                    } else {
+                        manager.requestLocationUpdates(provider, INTERVAL_MS, 0f, this, Looper.getMainLooper())
+                    }
                 }
             } catch (error: SecurityException) {
                 events.error("permission", "Location permission missing", null)

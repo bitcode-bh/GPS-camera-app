@@ -1794,6 +1794,11 @@ class _CameraScreenState extends State<CameraScreen>
             _dismissMenus();
             showSettingsCategory(context, SettingsCat.display);
           }),
+          // Privacy, open-source licences, map credits and version.
+          _stampRow('About', 'Privacy & licences', () {
+            _dismissMenus();
+            showSettingsCategory(context, SettingsCat.about);
+          }),
           if (_gpsNotice() case (final label, final action, final onTap))
             _stampRow(label, action, onTap),
         ],

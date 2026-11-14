@@ -44,5 +44,10 @@ void main() {
         .join('\n');
     expect(source, isNot(contains('nominatim.openstreetmap.org')));
     expect(source, isNot(contains('reference app')));
+    // Privacy, licences and credits must be reachable from the camera.
+    expect(
+      File('lib/screens/camera/camera_screen.dart').readAsStringSync(),
+      contains('showSettingsCategory(context, SettingsCat.about)'),
+    );
   });
 }
