@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
+import '../../core/signal_filters.dart';
 import '../../core/design/palette.dart';
 import '../../core/design/text_styles.dart';
 import '../../core/design/tokens.dart';
@@ -86,10 +87,20 @@ class _CameraScreenState extends State<CameraScreen>
   final _viewfinderPointers = <int>{};
 
   StreamSubscription<List<double>>? _orientationSub;
+  final _sensorClock = Stopwatch()..start();
+  final _gravityFilters = [LowPass(1.5), LowPass(1.5)];
+  final _headingFilter = HeadingLowPass(1.5);
   int _iconQuarterTurns = 0;
 
   void _listenForOrientation() {
-    _orientationSub ??= Native.gravity().listen((g) {
+    _orientationSub ??= Native.gravity().listen((raw) {
+      // Low-pass first, so a shake or a tap on the shutter is not a turn.
+      final at = raw.length > 3
+          ? Duration(microseconds: (raw[3] * 1e6).round())
+          : _sensorClock.elapsed;
+      final g = [
+        for (var i = 0; i < 2; i++) _gravityFilters[i].add(raw[i], at),
+      ];
       // Ignore flat positions and diagonal motion near an orientation boundary.
       final x = g[0].abs();
       final y = g[1].abs();
@@ -225,7 +236,12 @@ class _CameraScreenState extends State<CameraScreen>
 
   void _onCompass(double h) {
     if (!mounted) return;
-    final norm = (h % 360 + 360) % 360;
+    // Smoothed on the circle: hand tremor no longer makes the needle flicker,
+    // and passing north does not spin it the long way round.
+    final norm = _headingFilter.add(
+      (h % 360 + 360) % 360,
+      _sensorClock.elapsed,
+    );
     final now = DateTime.now();
     // Throttle: at most ~12 fps and only on a meaningful change.
     // Updating the ValueNotifier instead of setState means only the stamp
@@ -299,6 +315,10 @@ class _CameraScreenState extends State<CameraScreen>
       _orientationSub = null;
       _compassSub?.cancel();
       _compassSub = null;
+      for (final f in _gravityFilters) {
+        f.reset();
+      }
+      _headingFilter.reset();
       unawaited(_closeCamera());
     }
   }

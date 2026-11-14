@@ -61,7 +61,11 @@ class PlatformChannel(private val activity: Activity, messenger: BinaryMessenger
             })
         EventChannel(messenger, "com.gpscamera.gps_camera_next/gravity")
             .setStreamHandler(SensorStream(Sensor.TYPE_ACCELEROMETER, SensorManager.SENSOR_DELAY_NORMAL) { event ->
-                listOf(event.values[0].toDouble(), event.values[1].toDouble(), event.values[2].toDouble())
+                // With the sample time (seconds, monotonic) for time-based filtering.
+                listOf(
+                    event.values[0].toDouble(), event.values[1].toDouble(), event.values[2].toDouble(),
+                    event.timestamp / 1e9,
+                )
             })
     }
 

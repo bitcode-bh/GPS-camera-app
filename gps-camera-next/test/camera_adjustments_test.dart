@@ -217,12 +217,23 @@ void main() {
         expect(tester.getRect(evHint).left, closeTo(finder.left + 1, .1));
         expect(tester.getRect(zoomHint).right, closeTo(finder.right - 1, .1));
         expect(tester.getCenter(zoomHint).dy, closeTo(finder.center.dy, .1));
+        // The phone held still in the new position for a second (sensor
+        // time), so the smoothed tilt settles there.
+        var sensorTime = 0.0;
         Future<void> rotate(double x, double y) async {
-          await messenger.handlePlatformMessage(
-            'com.gpscamera.gps_camera_next/gravity',
-            const StandardMethodCodec().encodeSuccessEnvelope([x, y, 0.0]),
-            (_) {},
-          );
+          for (var i = 0; i < 2; i++) {
+            sensorTime += 1;
+            await messenger.handlePlatformMessage(
+              'com.gpscamera.gps_camera_next/gravity',
+              const StandardMethodCodec().encodeSuccessEnvelope([
+                x,
+                y,
+                0.0,
+                sensorTime,
+              ]),
+              (_) {},
+            );
+          }
           await tester.pumpAndSettle();
         }
 

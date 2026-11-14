@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'native.dart';
 import 'native_location.dart';
+import 'position_filter.dart';
 
 import '../models/geo_data.dart';
 
@@ -46,6 +47,7 @@ class LocationService {
   String _flag = '';
   String _iso = '';
   Fix? _lastAccepted;
+  Fix? _lastEstimate;
   bool _geocoding = false;
 
   static const acquireTimeout = Duration(seconds: 20);
@@ -95,21 +97,24 @@ class LocationService {
         acquiring = Timer(acquireTimeout, () {
           if (current()) emit(GpsState.unavailable);
         });
+        // A fresh filter per run: a restart may follow a long pause.
+        final filter = PositionFilter();
         positions = NativeLocation.positions().listen(
           (position) {
             final now = DateTime.now();
-            if (!current() ||
-                !acceptsFix(position, _lastAccepted, now) ||
-                !isBetterFix(position, _lastAccepted, now)) {
+            if (!current() || !acceptsFix(position, _lastAccepted, now)) {
               return;
             }
-            acquiring?.cancel();
             _lastAccepted = position;
+            if (!filter.update(position).used) return;
+            final estimate = filter.estimate!;
+            acquiring?.cancel();
+            _lastEstimate = estimate;
             // Publish the position now. The address follows when resolved.
-            emit(GpsState.fix, _toGeo(position));
-            _resolveAddress(position, () {
-              if (current() && identical(position, _lastAccepted)) {
-                emit(GpsState.fix, _toGeo(position));
+            emit(GpsState.fix, _toGeo(estimate));
+            _resolveAddress(estimate, () {
+              if (current() && identical(estimate, _lastEstimate)) {
+                emit(GpsState.fix, _toGeo(estimate));
               }
             });
           },
@@ -179,20 +184,6 @@ class LocationService {
     final to = LatLngLite(fix.latitude, fix.longitude);
     return from.distanceTo(to) <=
         seconds * 110 + previous.accuracy + fix.accuracy;
-  }
-
-  /// How long a good fix outranks a less accurate one. Indoors the fused
-  /// provider alternates between Wi-Fi fixes (~10 m) and weak GPS fixes
-  /// (20–200 m); without this the stamp flickers to "GPS unavailable".
-  static const keepBetterFix = Duration(seconds: 20);
-
-  /// Whether [fix] should replace [current]: it is of comparable or better
-  /// quality, or [current] is older than [keepBetterFix]. Comparable keeps a
-  /// good fix fresh (±15 m may replace ±14 m); only clearly worse fixes wait.
-  static bool isBetterFix(Fix fix, Fix? current, DateTime now) {
-    if (current == null) return true;
-    if (now.difference(current.timestamp) > keepBetterFix) return true;
-    return fix.accuracy <= current.accuracy * 1.5 + 5;
   }
 
   bool _hasAddressFor(LatLngLite here) =>
