@@ -37,8 +37,6 @@ dependencies:
   # White balance uses the active CameraX control of this plugin version.
   camera_android_camerax: 0.7.2+1
   camera_platform_interface: ^2.13.0
-  flutter_map: ^8.3.0
-  latlong2: ^0.9.1
   video_player: ^2.14.1
 dev_dependencies:
   flutter_test:

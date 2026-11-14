@@ -2,8 +2,6 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
 
 import '../core/design/palette.dart';
 import '../core/design/text_styles.dart';
@@ -11,6 +9,7 @@ import '../core/design/tokens.dart';
 import '../core/glass.dart';
 import '../models/map_kind.dart';
 import '../state/settings_controller.dart';
+import 'tile_map.dart';
 
 /// A live base-map card centred on the fix, with an accuracy ring and a glowing
 /// heading pin. [compact] trims the chrome for small stamp thumbnails. Wrapped
@@ -58,7 +57,7 @@ class MiniMap extends StatelessWidget {
         label: kind.label,
       );
     }
-    final center = LatLng(lat, lon);
+    final center = GeoPoint(lat, lon);
     final br = BorderRadius.circular(radius);
     return RepaintBoundary(
       child: ClipRRect(
@@ -71,56 +70,22 @@ class MiniMap extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              FlutterMap(
-                // Recreate only when the fix moves ~100 m, the style changes, or the zoom level changes,
-                // so small jitters don't trigger a tile reload/flicker.
+              TileMap(
+                // Re-centre only when the fix moves ~100 m, the style changes,
+                // or the zoom changes, so small jitters never reload tiles.
                 key: ValueKey(
                   '${lat.toStringAsFixed(3)},${lon.toStringAsFixed(3)},${kind.name},$zoom',
                 ),
-                options: MapOptions(
-                  initialCenter: center,
-                  initialZoom: zoom,
-                  interactionOptions: const InteractionOptions(
-                    flags: InteractiveFlag.none,
-                  ),
+                controller: TileMapController(center: center, zoom: zoom),
+                interactive: false,
+                userAgent: MapTiles.userAgent,
+                sources: tileSources(kind),
+                markers: hereMarkers(
+                  center,
+                  accent,
+                  compact ? 13 : 20,
+                  heading,
                 ),
-                children: [
-                  TileLayer(
-                    urlTemplate: kind.tileUrl,
-                    userAgentPackageName: MapTiles.userAgent,
-                    tileDimension: kind.tileDimension,
-                  ),
-                  if (kind.overlayUrl != null)
-                    TileLayer(
-                      urlTemplate: kind.overlayUrl!,
-                      userAgentPackageName: MapTiles.userAgent,
-                      tileDimension: kind.overlayDimension,
-                    ),
-                  CircleLayer(
-                    circles: [
-                      CircleMarker(
-                        point: center,
-                        radius: compact ? 13 : 20,
-                        color: accent.withValues(alpha: 0.14),
-                        borderColor: accent.withValues(alpha: 0.75),
-                        borderStrokeWidth: 1.2,
-                      ),
-                    ],
-                  ),
-                  MarkerLayer(
-                    markers: [
-                      Marker(
-                        point: center,
-                        width: 36,
-                        height: 36,
-                        child: Transform.rotate(
-                          angle: heading * math.pi / 180,
-                          child: CustomPaint(painter: _PinPainter(accent)),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
               ),
               // Subtle vignette for legibility of any overlaid chrome.
               const IgnorePointer(
@@ -175,6 +140,41 @@ class MiniMap extends StatelessWidget {
     );
   }
 }
+
+/// The base map and, for Hybrid, its label layer.
+List<TileSource> tileSources(MapKind kind) => [
+  TileSource(kind.tileUrl, tileSize: kind.tileDimension),
+  if (kind.overlayUrl case final labels?)
+    TileSource(labels, tileSize: kind.overlayDimension),
+];
+
+/// The accuracy ring and heading pin at the user's position.
+List<MapMarker> hereMarkers(
+  GeoPoint at,
+  Color accent,
+  double radius,
+  double heading,
+) => [
+  MapMarker(
+    at: at,
+    size: Size.square(radius * 2),
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: accent.withValues(alpha: 0.14),
+        border: Border.all(color: accent.withValues(alpha: 0.75), width: 1.2),
+      ),
+    ),
+  ),
+  MapMarker(
+    at: at,
+    size: const Size.square(36),
+    child: Transform.rotate(
+      angle: heading * math.pi / 180,
+      child: CustomPaint(painter: _PinPainter(accent)),
+    ),
+  ),
+];
 
 /// The minimum Esri credit, legible over any imagery.
 class _EsriCredit extends StatelessWidget {
@@ -424,13 +424,21 @@ class _MapZoomPopup extends StatefulWidget {
 
 class _MapZoomPopupState extends State<_MapZoomPopup> {
   late double _currentZoom;
-  late final MapController _mapController;
+  late final TileMapController _mapController;
 
   @override
   void initState() {
     super.initState();
     _currentZoom = widget.initialZoom;
-    _mapController = MapController();
+    _mapController = TileMapController(
+      center: GeoPoint(widget.lat, widget.lon),
+      zoom: _currentZoom,
+      maxZoom: 18,
+    )..addListener(_onMapMoved);
+  }
+
+  void _onMapMoved() {
+    if (mounted) setState(() => _currentZoom = _mapController.zoom);
   }
 
   @override
@@ -449,27 +457,27 @@ class _MapZoomPopupState extends State<_MapZoomPopup> {
   void _zoomIn() {
     setState(() {
       _currentZoom = (_currentZoom + 0.5).clamp(1.0, 18.0);
-      _mapController.move(LatLng(widget.lat, widget.lon), _currentZoom);
+      _mapController.move(GeoPoint(widget.lat, widget.lon), _currentZoom);
     });
   }
 
   void _zoomOut() {
     setState(() {
       _currentZoom = (_currentZoom - 0.5).clamp(1.0, 18.0);
-      _mapController.move(LatLng(widget.lat, widget.lon), _currentZoom);
+      _mapController.move(GeoPoint(widget.lat, widget.lon), _currentZoom);
     });
   }
 
   void _resetZoom() {
     setState(() {
       _currentZoom = 16.5; // Default zoom
-      _mapController.move(LatLng(widget.lat, widget.lon), _currentZoom);
+      _mapController.move(GeoPoint(widget.lat, widget.lon), _currentZoom);
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final center = LatLng(widget.lat, widget.lon);
+    final center = GeoPoint(widget.lat, widget.lon);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(Insets.lg),
@@ -489,60 +497,16 @@ class _MapZoomPopupState extends State<_MapZoomPopup> {
                   onDoubleTap: _resetZoom,
                   child: Stack(
                     children: [
-                      FlutterMap(
-                        mapController: _mapController,
-                        options: MapOptions(
-                          initialCenter: center,
-                          initialZoom: _currentZoom,
-                          onPositionChanged: (position, hasGesture) {
-                            if (hasGesture) {
-                              setState(() {
-                                _currentZoom = position.zoom.clamp(1.0, 18.0);
-                              });
-                            }
-                          },
+                      TileMap(
+                        controller: _mapController,
+                        userAgent: MapTiles.userAgent,
+                        sources: tileSources(widget.kind),
+                        markers: hereMarkers(
+                          center,
+                          Palette.teal,
+                          20,
+                          widget.heading,
                         ),
-                        children: [
-                          TileLayer(
-                            urlTemplate: widget.kind.tileUrl,
-                            userAgentPackageName: MapTiles.userAgent,
-                            tileDimension: widget.kind.tileDimension,
-                          ),
-                          if (widget.kind.overlayUrl != null)
-                            TileLayer(
-                              urlTemplate: widget.kind.overlayUrl!,
-                              userAgentPackageName: MapTiles.userAgent,
-                              tileDimension: widget.kind.overlayDimension,
-                            ),
-                          CircleLayer(
-                            circles: [
-                              CircleMarker(
-                                point: center,
-                                radius: 20,
-                                color: Palette.teal.withValues(alpha: 0.14),
-                                borderColor: Palette.teal.withValues(
-                                  alpha: 0.75,
-                                ),
-                                borderStrokeWidth: 1.2,
-                              ),
-                            ],
-                          ),
-                          MarkerLayer(
-                            markers: [
-                              Marker(
-                                point: center,
-                                width: 36,
-                                height: 36,
-                                child: Transform.rotate(
-                                  angle: widget.heading * math.pi / 180,
-                                  child: CustomPaint(
-                                    painter: _PinPainter(Palette.teal),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
                       ),
                       // Top-Left Floating Zoom Value Chip
                       Positioned(

@@ -100,7 +100,9 @@ class PlatformChannel(private val activity: Activity, messenger: BinaryMessenger
     private fun geocode(lat: Double, lon: Double, result: MethodChannel.Result) {
         if (!Geocoder.isPresent()) return result.success(null)
         val geocoder = Geocoder(context, Locale.getDefault())
-        val reply = { address: Address? -> main.post { result.success(address?.let(::toMap)) } }
+        fun reply(address: Address?) {
+            main.post { result.success(address?.let(::toMap)) }
+        }
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 geocoder.getFromLocation(lat, lon, 1, object : Geocoder.GeocodeListener {

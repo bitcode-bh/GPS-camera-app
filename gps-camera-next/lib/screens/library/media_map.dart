@@ -1,15 +1,15 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import '../../core/date_format.dart';
-import 'package:latlong2/latlong.dart';
 
 import '../../models/map_kind.dart';
 import '../../models/media_item.dart';
 import '../../services/media_image.dart';
 import '../../services/media_library.dart';
 import '../../state/settings_controller.dart';
+import '../../widgets/mini_map.dart' show tileSources;
+import '../../widgets/tile_map.dart';
 import '../camera/widgets/camera_design.dart';
 
 /// What the map is showing. A selected marker always has its preview open,
@@ -111,7 +111,8 @@ class MediaMap extends StatefulWidget {
 }
 
 class _MediaMapState extends State<MediaMap> {
-  final _map = MapController();
+  final _map = TileMapController(minZoom: 2, maxZoom: 19);
+  Size _mapSize = Size.zero;
   final _previewPages = PageController();
   List<String>? _selected; // Keys of the selected marker's items.
   double _zoom = 3;
@@ -125,13 +126,23 @@ class _MediaMapState extends State<MediaMap> {
   void initState() {
     super.initState();
     _library.addListener(_onLibrary);
+    _map.addListener(_onMapMoved);
+  }
+
+  void _onMapMoved() {
+    // Regroup only when the zoom moved enough to change overlaps.
+    if ((_map.zoom - _zoom).abs() >= .25 && mounted) {
+      setState(() => _zoom = _map.zoom);
+    }
   }
 
   @override
   void dispose() {
     _library.removeListener(_onLibrary);
     _previewPages.dispose();
-    _map.dispose();
+    _map
+      ..removeListener(_onMapMoved)
+      ..dispose();
     super.dispose();
   }
 
@@ -146,33 +157,28 @@ class _MediaMapState extends State<MediaMap> {
     });
   }
 
-  List<LatLng> get _points => [
+  List<GeoPoint> get _points => [
     for (final item in _library.mapItems)
-      if (_library.locationOf(item) case final at?) LatLng(at.lat, at.lon),
+      if (_library.locationOf(item) case final at?) GeoPoint(at.lat, at.lon),
   ];
+
+  EdgeInsets get _fitPadding => EdgeInsets.fromLTRB(
+    48,
+    widget.topPadding + 48,
+    48,
+    widget.bottomPadding + 120,
+  );
 
   /// Frames every marker, upright, with room for the chrome around it.
   void _fit() {
     final points = _points;
     if (points.isEmpty || !_mapReady) return;
-    _map.rotate(0);
-    final bounds = LatLngBounds.fromPoints(points);
-    if (bounds.southWest == bounds.northEast) {
+    if (points.toSet().length == 1) {
       _map.move(points.first, 15);
     } else {
-      _map.fitCamera(
-        CameraFit.bounds(
-          bounds: bounds,
-          maxZoom: 16,
-          padding: EdgeInsets.fromLTRB(
-            48,
-            widget.topPadding + 48,
-            48,
-            widget.bottomPadding + 120,
-          ),
-        ),
-      );
+      _map.fit(points, _mapSize, padding: _fitPadding, maxZoom: 16);
     }
+    setState(() => _zoom = _map.zoom);
   }
 
   void _select(MarkerGroup group) {
@@ -227,72 +233,36 @@ class _MediaMapState extends State<MediaMap> {
               if (selected.contains(item.key)) item,
           ];
     final kind = SettingsController.instance.mapKind;
-    final points = _points;
     return Stack(
       children: [
-        FlutterMap(
-          mapController: _map,
-          options: MapOptions(
-            initialCenter: points.first,
-            initialZoom: 15,
-            initialCameraFit: points.length < 2
-                ? null
-                : CameraFit.bounds(
-                    bounds: LatLngBounds.fromPoints(points),
-                    maxZoom: 16,
-                    padding: EdgeInsets.fromLTRB(
-                      48,
-                      widget.topPadding + 48,
-                      48,
-                      widget.bottomPadding + 120,
-                    ),
-                  ),
-            minZoom: 2,
-            maxZoom: 19,
-            backgroundColor: const Color(0xFF1C1C1E),
-            onMapReady: () {
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final size = constraints.biggest;
+            if (!_mapReady && !size.isEmpty) {
+              // Frame every marker once, the first time the map has a size.
               _mapReady = true;
-              setState(() => _zoom = _map.camera.zoom);
-            },
-            onTap: (_, _) => setState(() => _selected = null),
-            onPositionChanged: (camera, _) {
-              // Regroup only when the zoom moved enough to change overlaps.
-              if ((camera.zoom - _zoom).abs() >= .25) {
-                setState(() => _zoom = camera.zoom);
-              }
-            },
-          ),
-          children: [
-            TileLayer(
-              key: ValueKey('base-$_tileEpoch-${kind.name}'),
-              urlTemplate: kind.tileUrl,
-              userAgentPackageName: MapTiles.userAgent,
-              tileDimension: kind.tileDimension,
-              errorTileCallback: (_, _, _) {
+              _mapSize = size;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) _fit();
+              });
+            }
+            _mapSize = size;
+            return TileMap(
+              key: ValueKey('map-$_tileEpoch-${kind.name}'),
+              controller: _map,
+              userAgent: MapTiles.userAgent,
+              sources: tileSources(kind),
+              onTap: () => setState(() => _selected = null),
+              onTileError: () {
                 if (!_tilesFailed && mounted) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (mounted) setState(() => _tilesFailed = true);
-                  });
+                  setState(() => _tilesFailed = true);
                 }
               },
-            ),
-            if (kind.overlayUrl != null)
-              TileLayer(
-                key: ValueKey('labels-$_tileEpoch'),
-                urlTemplate: kind.overlayUrl!,
-                userAgentPackageName: MapTiles.userAgent,
-                tileDimension: kind.overlayDimension,
-                errorTileCallback: (_, _, _) {},
-              ),
-            MarkerLayer(
-              rotate: true,
               markers: [
                 for (final group in groups)
-                  Marker(
+                  MapMarker(
                     key: ValueKey(group.id),
-                    point: LatLng(group.at.lat, group.at.lon),
-                    width: 44,
-                    height: 44,
+                    at: GeoPoint(group.at.lat, group.at.lon),
                     child: _MarkerDot(
                       group: group,
                       selected:
@@ -302,8 +272,8 @@ class _MediaMapState extends State<MediaMap> {
                     ),
                   ),
               ],
-            ),
-          ],
+            );
+          },
         ),
         Positioned(
           left: 8,
