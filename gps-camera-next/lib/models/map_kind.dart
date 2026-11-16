@@ -12,9 +12,9 @@ enum MapKind { normal, satellite, hybrid, terrain }
 ///
 ///   `flutter build appbundle --dart-define=ESRI_API_KEY=YOUR_KEY`
 ///
-/// Restrict the key to this app's package and signing certificate, and set a
-/// billing cap in the ArcGIS Location Platform dashboard. Debug builds without
-/// a key fall back to the public tile endpoints for development only.
+/// Use provider-supported privileges/referrers, expiry, rotation and usage
+/// controls. Native client keys are extractable. Debug builds without a key
+/// use the public tile endpoints for development only.
 class MapTiles {
   MapTiles._();
 
@@ -26,6 +26,13 @@ class MapTiles {
   static bool get available => authenticated || !kReleaseMode;
 
   static const userAgent = 'com.gpscamera.gps_camera_next';
+  static const _referer = String.fromEnvironment('ESRI_REFERER');
+
+  static Map<String, String> get headers => {
+    'User-Agent': userAgent,
+    if (authenticated) 'Authorization': 'Bearer $_key',
+    if (_referer.isNotEmpty) 'Referer': _referer,
+  };
 
   static const _static =
       'https://static-map-tiles-api.arcgis.com/arcgis/rest/services/'
@@ -36,7 +43,7 @@ class MapTiles {
   static const _legacy = 'https://server.arcgisonline.com/ArcGIS/rest/services';
 
   static String _styled(String style) =>
-      '$_static/$style/static/tile/{z}/{y}/{x}?token=$_key';
+      '$_static/$style/static/tile/{z}/{y}/{x}';
 }
 
 extension MapKindX on MapKind {
@@ -62,8 +69,7 @@ extension MapKindX on MapKind {
       return switch (this) {
         MapKind.normal => MapTiles._styled('arcgis/streets'),
         MapKind.terrain => MapTiles._styled('arcgis/outdoor'),
-        MapKind.satellite ||
-        MapKind.hybrid => '${MapTiles._imagery}?token=${MapTiles._key}',
+        MapKind.satellite || MapKind.hybrid => MapTiles._imagery,
       };
     }
     return switch (this) {
@@ -90,10 +96,12 @@ extension MapKindX on MapKind {
 
   int get overlayDimension => MapTiles.authenticated ? 512 : 256;
 
-  /// Data providers to credit next to "Powered by Esri". These are the
-  /// services' published credits; Esri's per-style attribution endpoint is the
-  /// authoritative list and may add regional sources.
-  String get dataCredit => _imagery
-      ? 'Esri, Maxar, Earthstar Geographics, and the GIS User Community'
-      : 'Esri, HERE, Garmin, FAO, NOAA, USGS, © OpenStreetMap contributors';
+  /// Metadata for every actual layer; copyrightText is the provider's source
+  /// list. No coordinates are needed for these requests.
+  List<Uri> get metadataUrls => [
+    for (final url in [tileUrl, ?overlayUrl])
+      Uri.parse(
+        url.substring(0, url.indexOf('/tile/')),
+      ).replace(queryParameters: {'f': 'json'}),
+  ];
 }

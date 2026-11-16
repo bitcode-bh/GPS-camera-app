@@ -1,9 +1,18 @@
 # Production readiness — GPS Camera Next
 
+**Current status (15 November 2026): NO-GO for worldwide production.** See the
+[current assessment](/Volumes/Bitcode/GitHub/GPS-camera-app/gps-camera-next/docs/publishing/deployment-readiness-2026-11-15.md)
+and [implemented fixes / remaining gates](/Volumes/Bitcode/GitHub/GPS-camera-app/gps-camera-next/docs/publishing/remediation-2026-11-15.md).
+The measurements and conditional-readiness text below are historical debug-development evidence.
+
+See [location-integrity.md](location-integrity.md) for the 15 November integrity
+changes and unverified device checks. The device results below predate those
+changes; video picture sampling no longer uses the earlier 10-second throttle.
+
 Audit base: `cee3c36`. Work branch: `claude/gps-camera-next-production-be862f`.
 Toolchain: Flutter 3.44.2 / Dart 3.12.2, compile and target SDK 36, min SDK 24.
 
-**Status: CONDITIONALLY READY.** The code builds, every automated check
+**Historical status: CONDITIONALLY READY.** The code builds, every automated check
 passes, and the camera, video, Library, viewer and map flows passed on a
 Motorola Edge 70. Play submission is still blocked by owner actions: an upload
 key, a version code, a privacy policy and the Data safety form (see §H). Grid
@@ -204,7 +213,7 @@ clears the selection.
 No frame-timing or memory profile of the release build was captured. No
 smoothness claims are made.
 
-## G. Production build
+## G. Historical production-build inspection
 
 - `build/app/outputs/bundle/release/app-release.aab`
   SHA-256 `d406bc14b225d96acb5d7929b2a4f222bf79a18aa66d3bb01d04404bfae3e0f0`
@@ -212,8 +221,9 @@ smoothness claims are made.
   SHA-256 `5bc450a3184c963127da306bb9f6cb4cfba9ab2d11a609ab19b288f8df862d3e`
 - Package `com.gpscamera.gps_camera_next`, version `0.1.0` (code 1).
 - **Signed with the debug key** because `android/key.properties` is absent.
-  R8/resource shrinking is enabled only when the key file is present. Play
-  will reject this bundle as built. Build artifacts are not committed.
+  At that time R8/resource shrinking was enabled only when the key file was present.
+  Current configuration always enables R8 for release and blocks missing/invalid upload
+  signing instead of using debug keys. The historical bundles are not upload candidates.
 
 ## H. Google Play checklist
 
@@ -226,6 +236,6 @@ smoothness claims are made.
 | Release build with R8 on, smoke-tested on device | Pending signing |
 | Device pass on the blocked items in §E | **Pending** |
 | Privacy policy URL | **Owner action** |
-| Data safety form: precise location (stored in photos/videos the user saves, not collected by the developer); coordinates sent to the platform geocoder and OpenStreetMap Nominatim for address lookup; map tiles from Esri | **Owner action**, facts listed here |
+| Data safety: location-bearing Esri requests and device Geocoder; local index/media storage; provider retention/sharing roles unresolved | **Owner action**: use the current Data safety worksheet, not historical Nominatim/ephemeral assumptions |
 | Store listing, screenshots, content rating | **Owner action** |
 | Submission / approval | Not done, not claimed |

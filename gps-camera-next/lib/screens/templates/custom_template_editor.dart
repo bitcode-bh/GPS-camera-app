@@ -253,41 +253,79 @@ class _CustomTemplateEditorState extends State<CustomTemplateEditor> {
                 spacing: Insets.xs,
                 children: [
                   ActionChip(
-                    label: Text('Width ${(c.width * 100).round()}%'),
+                    label: Text(
+                      'Width ${(c.width * 100).round()}%',
+                      style: const TextStyle(color: Palette.accentYellow),
+                    ),
                     onPressed: () => _t.update(
                       (c) => c.width = _next([1.0, 0.9, 0.75], c.width),
                     ),
                   ),
                   ActionChip(
-                    label: Text('Map ${c.mapSize.label}'),
+                    label: Text(
+                      'Map ${c.mapSize.label}',
+                      style: const TextStyle(color: Palette.accentYellow),
+                    ),
                     onPressed: () => _t.update(
                       (c) => c.mapSize = _next(StampSize.values, c.mapSize),
                     ),
                   ),
                   ActionChip(
-                    label: Text('Spacing ${c.spacing.label}'),
+                    label: Text(
+                      'Spacing ${c.spacing.label}',
+                      style: const TextStyle(color: Palette.accentYellow),
+                    ),
                     onPressed: () => _t.update(
                       (c) => c.spacing = _next(StampSize.values, c.spacing),
                     ),
                   ),
-                  FilterChip(
-                    label: const Text('Bold text'),
-                    selected: c.boldText,
-                    onSelected: (value) => _t.update((c) => c.boldText = value),
-                  ),
-                  FilterChip(
-                    label: const Text('Accent text'),
-                    selected: c.accentText,
-                    onSelected: (value) =>
-                        _t.update((c) => c.accentText = value),
-                  ),
                 ],
+              ),
+              _glassCard(
+                Column(
+                  children: [
+                    GlassSwitchTile(
+                      label: 'Bold text',
+                      icon: Icons.format_bold,
+                      value: c.boldText,
+                      onChanged: (value) =>
+                          _t.update((c) => c.boldText = value),
+                    ),
+                    GlassSwitchTile(
+                      label: 'Accent text',
+                      icon: Icons.format_color_text,
+                      value: c.accentText,
+                      onChanged: (value) =>
+                          _t.update((c) => c.accentText = value),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: Insets.lg),
 
-              const SectionLabel('CUSTOM TEXT'),
               _glassCard(
-                Column(
+                ExpansionTile(
+                  key: const PageStorageKey('custom-text-settings'),
+                  title: Text(
+                    'CUSTOM TEXT',
+                    style: AppText.caption.copyWith(color: Palette.textMid),
+                  ),
+                  tilePadding: EdgeInsets.zero,
+                  childrenPadding: const EdgeInsets.only(top: Insets.xs),
+                  shape: const Border(),
+                  collapsedShape: const Border(),
+                  iconColor: Palette.textMid,
+                  collapsedIconColor: Palette.textMid,
+                  maintainState: true,
+                  expansionAnimationStyle: AnimationStyle(
+                    duration: MediaQuery.disableAnimationsOf(context)
+                        ? Duration.zero
+                        : Motion.normal,
+                    curve: Motion.standard,
+                  ),
+                  onExpansionChanged: (expanded) {
+                    if (!expanded) FocusScope.of(context).unfocus();
+                  },
                   children: [
                     _field(
                       'Project / Title',
@@ -368,10 +406,10 @@ class _CustomTemplateEditorState extends State<CustomTemplateEditor> {
   }
 
   Widget _previewCard(TemplateConfig c) {
-    return ClipRRect(
+    return ClipRSuperellipse(
       borderRadius: BorderRadius.circular(Corners.lg),
       child: Container(
-        height: 240,
+        constraints: const BoxConstraints(minHeight: 144),
         padding: const EdgeInsets.all(12),
         decoration: const BoxDecoration(
           gradient: LinearGradient(
@@ -404,27 +442,11 @@ class _CustomTemplateEditorState extends State<CustomTemplateEditor> {
   T _next<T>(List<T> values, T current) =>
       values[(values.indexOf(current) + 1) % values.length];
 
-  Widget _toggle(StampField f, bool on) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 3),
-    child: Row(
-      children: [
-        Icon(f.icon, size: 16, color: on ? Palette.textHi : Palette.textLo),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            f.label,
-            style: AppText.body.copyWith(
-              color: on ? Palette.textHi : Palette.textMid,
-            ),
-          ),
-        ),
-        GlassSwitch(
-          value: on,
-          onChanged: (v) => _t.toggleField(f, v),
-          compact: true,
-        ),
-      ],
-    ),
+  Widget _toggle(StampField f, bool on) => GlassSwitchTile(
+    label: f.label,
+    icon: f.icon,
+    value: on,
+    onChanged: (value) => _t.toggleField(f, value),
   );
 
   Widget _field(
@@ -435,10 +457,12 @@ class _CustomTemplateEditorState extends State<CustomTemplateEditor> {
     TextInputType? keyboard,
   }) {
     return Container(
-      decoration: BoxDecoration(
+      decoration: ShapeDecoration(
         color: Palette.glassFillStrong,
-        borderRadius: BorderRadius.circular(Corners.md),
-        border: Border.all(color: Palette.glassStrokeSoft),
+        shape: Corners.shape(
+          Corners.md,
+          side: const BorderSide(color: Palette.glassStrokeSoft),
+        ),
       ),
       child: TextField(
         controller: ctrl,
@@ -462,5 +486,5 @@ class _CustomTemplateEditorState extends State<CustomTemplateEditor> {
   }
 
   Widget _div() =>
-      Divider(color: Palette.glassStrokeSoft, height: 18, thickness: 0.6);
+      Divider(color: Palette.glassStrokeSoft, height: 1, thickness: 0.6);
 }

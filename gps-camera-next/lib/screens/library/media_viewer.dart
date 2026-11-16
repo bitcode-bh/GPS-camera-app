@@ -190,6 +190,8 @@ class _MediaViewerState extends State<MediaViewer> {
                 )
               else ...[
                 if (location.place.isNotEmpty) Text(location.place),
+                if (location.integrityNote.isNotEmpty)
+                  Text(location.integrityNote),
                 Text(
                   '${location.lat.toStringAsFixed(6)}, ${location.lon.toStringAsFixed(6)}',
                   style: const TextStyle(color: Colors.white70),

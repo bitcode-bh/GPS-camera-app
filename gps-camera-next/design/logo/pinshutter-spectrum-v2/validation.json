@@ -1,0 +1,30 @@
+{
+  "brand": "PinShutter",
+  "selected_concept": "01 / Spectrum P",
+  "changes": [
+    "smooth continuous colour blend",
+    "launcher icons",
+    "camera loading logo and script",
+    "library script header",
+    "native legacy Android and iOS launch lockup"
+  ],
+  "flutter_analyze": "clean",
+  "flutter_tests_passed": 157,
+  "focused_layout_widths_dp": [
+    320,
+    390
+  ],
+  "android_debug_build": "passed",
+  "apk_sha256": "7947572d63fc990cbee8757e435e4a435b7079917cef6d8b58ee17cecf6576cc",
+  "apk_size_bytes": 171337606,
+  "packaged_brand_assets_verified": true,
+  "device_installed": false,
+  "ios_build_run": false,
+  "committed": false,
+  "pushed": false,
+  "limitations": [
+    "Android 12+ uses its system-managed initial splash before Flutter",
+    "adaptive launcher masks and launch transitions not device tested",
+    "existing ownership and production release gates remain open"
+  ]
+}

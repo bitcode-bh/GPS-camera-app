@@ -1,0 +1,22 @@
+{
+  "queried_packages": 116,
+  "findings": [
+    {
+      "package": "com.google.guava:guava:33.5.0-android",
+      "advisories": [
+        "GHSA-xxph-c9ww-hj94"
+      ],
+      "cve": "CVE-2026-102554",
+      "publisher_severity": "Moderate",
+      "assessment_severity": "Medium",
+      "source": "https://github.com/google/guava/security/advisories/GHSA-xxph-c9ww-hj94",
+      "patched_version": ">=33.7.2-android",
+      "triage": "No ObjectInputStream/readObject entry point found in app Dart/Kotlin source. Complete transitive reachability not proven; malicious Java deserialization is a precondition. No exploit demonstrated.",
+      "recommended_action": "Compatible dependency upgrade and release regression testing, or documented reachability analysis and temporary acceptance."
+    }
+  ],
+  "assessment_date": "2026-11-15",
+  "limitations": [
+    "No result is not proof of absence; engine-vendored C/C++ components not version-matched by this query."
+  ]
+}

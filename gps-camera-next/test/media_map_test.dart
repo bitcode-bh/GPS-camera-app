@@ -1,11 +1,26 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:gps_camera_next/models/map_kind.dart';
 import 'package:gps_camera_next/models/media_item.dart';
+import 'package:gps_camera_next/services/map_attribution.dart';
 import 'package:gps_camera_next/screens/library/media_map.dart';
 import 'package:gps_camera_next/services/media_library.dart';
+import 'package:gps_camera_next/state/settings_controller.dart';
+import 'package:gps_camera_next/state/prefs.dart';
+import 'package:gps_camera_next/widgets/tile_map.dart';
 
 import 'support/fake_media.dart';
 
 void main() {
+  late MapAttribution previousAttribution;
+  setUp(() {
+    previousAttribution = MapAttribution.instance;
+    MapAttribution.instance = MapAttribution(
+      fetch: (_) async =>
+          '{"copyrightText":"Esri, Regional imagery and label partners, © OpenStreetMap contributors"}',
+    );
+  });
+  tearDown(() => MapAttribution.instance = previousAttribution);
   const delhi = MediaLocation(28.6139, 77.2090);
   const nextDoor = MediaLocation(28.61391, 77.20901); // About a metre away.
   const mumbai = MediaLocation(19.0760, 72.8777);
@@ -94,4 +109,77 @@ void main() {
     // A selection cannot outlive its markers.
     expect(mapPhase(LibraryStatus.loaded, 0, true), MapPhase.empty);
   });
+
+  testWidgets(
+    'gallery map switches and saves tiles without moving the viewport',
+    (tester) async {
+      final prefs = Prefs.memory();
+      final settings = SettingsController.instance..attach(prefs);
+      late MediaLibrary library;
+      await tester.runAsync(() async {
+        library = MediaLibrary(
+          gateway: FakeGateway([photo(1)]),
+          index: tempIndex(),
+        );
+        await library.index.recordCapture('image:1', location: delhi);
+        await library.refresh();
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: MediaMap(
+              library: library,
+              onOpen: (_) {},
+              topPadding: 56,
+              bottomPadding: 0,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final controller = tester
+          .widget<TileMap>(find.byType(TileMap))
+          .controller;
+      const center = GeoPoint(28.62, 77.22);
+      controller.move(center, 13);
+      await tester.pump();
+      for (final kind in MapKind.values) {
+        await tester.tap(
+          find.byTooltip('Map style: ${settings.mapKind.label}'),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byWidgetPredicate(
+            (widget) =>
+                widget is CheckedPopupMenuItem<MapKind> && widget.value == kind,
+          ),
+        );
+        await tester.pumpAndSettle();
+        final map = tester.widget<TileMap>(find.byType(TileMap));
+        expect(settings.mapKind, kind);
+        expect(prefs.getString('mapKind'), kind.name);
+        expect(map.sources.first.urlTemplate, kind.tileUrl);
+        expect(map.sources.length, kind == MapKind.hybrid ? 2 : 1);
+        expect(map.controller, same(controller));
+        expect(controller.center, center);
+        expect(controller.zoom, 13);
+        expect(map.markers, hasLength(1));
+      }
+      await tester.tap(find.text('Powered by Esri · Map credits'));
+      await tester.pumpAndSettle();
+      expect(find.text('Map credits'), findsOneWidget);
+      expect(
+        find.textContaining('Regional imagery and label partners'),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('Close'));
+      await tester.pumpAndSettle();
+      expect(controller.center, center);
+      expect(controller.zoom, 13);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      library.dispose();
+      settings.attach(Prefs.memory());
+    },
+  );
 }

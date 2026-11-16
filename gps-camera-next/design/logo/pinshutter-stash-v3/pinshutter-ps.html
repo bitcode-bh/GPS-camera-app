@@ -1,0 +1,36 @@
+<!doctype html><meta charset="utf-8"><style>@font-face{font-family:P;src:url("file:///Volumes/Bitcode/GitHub/Stash/app/src/main/res/font/pacifico.ttf")}body{margin:0;background:#16202B}canvas{display:block}</style>
+<canvas id="o" width="432" height="432"></canvas>
+<script>
+window.iconReady=(async()=>{
+await document.fonts.load('200px P');
+const W=432,c=216,R=128;
+const src=document.createElement('canvas');src.width=src.height=W;const g=src.getContext('2d');
+g.fillStyle='#16202B';g.fillRect(0,0,W,W);
+function blob(x,y,r,col,blur){g.save();g.filter='blur('+blur+'px)';g.fillStyle=col;g.beginPath();g.arc(x,y,r,0,7);g.fill();g.restore()}
+blob(100,100,150,'#2ED3B7',60);blob(340,340,160,'#3B6BFF',60);blob(318,132,80,'#FF7A59',16);blob(96,322,66,'#B36BFF',16);
+g.font='80px P';g.textAlign='center';g.textBaseline='alphabetic';
+g.save();g.filter='blur(6px)';g.fillStyle='rgba(0,0,0,0.4)';g.fillText('PS',c-4,c+29);g.restore();
+g.fillStyle='#fff';g.fillText('PS',c-3,c+24);
+const sd=g.getImageData(0,0,W,W).data;
+const out=document.getElementById('o').getContext('2d');
+// the drop's shadow on the ground
+out.drawImage(src,0,0);out.save();out.filter='blur(14px)';out.fillStyle='rgba(0,0,0,0.5)';out.beginPath();out.arc(c,c+14,R,0,7);out.fill();out.restore();
+const img=out.getImageData(0,0,W,W),d=img.data;
+function samp(x,y,ch){x=Math.max(0,Math.min(W-1.001,x));y=Math.max(0,Math.min(W-1.001,y));const x0=x|0,y0=y|0,fx=x-x0,fy=y-y0,i=(y0*W+x0)*4+ch;return sd[i]*(1-fx)*(1-fy)+sd[i+4]*fx*(1-fy)+sd[i+W*4]*(1-fx)*fy+sd[i+W*4+4]*fx*fy}
+for(let y=0;y<W;y++)for(let x=0;x<W;x++){
+ const dx=x-c,dy=y-c,dist=Math.hypot(dx,dy);if(dist>R+1)continue;
+ const q=dist/R,deep=1-q,cov=Math.max(0,Math.min(1,R+0.5-dist));
+ const ux=dist?dx/dist:0,uy=dist?dy/dist:0,i=(y*W+x)*4;
+ for(let ch=0;ch<3;ch++){
+  // a drop magnifies what is under its middle, and near its rim throws the picture across to the other side
+  const k=[0.92,1,1.08][ch],rad=q/1.3-0.62*k*Math.exp(-deep/0.085);
+  let v=samp(c+ux*rad*R,c+uy*rad*R,ch);
+  const rim=Math.exp(-deep/0.05),top=Math.max(0,-(ux*0.55+uy*0.83)),bot=Math.max(0,ux*0.55+uy*0.83);
+  v=v*(1-0.10*bot*Math.exp(-deep/0.3))+255*(0.07+0.75*rim*(0.35+0.65*Math.max(top,bot*0.7)));
+  d[i+ch]=d[i+ch]*(1-cov)+Math.min(255,v)*cov;
+ }}
+out.putImageData(img,0,0);
+// the bright crescent a drop carries on its lit side
+out.save();out.beginPath();out.arc(c,c,R-10,0,7);out.clip();out.filter='blur(7px)';out.strokeStyle='rgba(255,255,255,0.75)';out.lineWidth=10;out.lineCap='round';out.beginPath();out.arc(c,c,R-22,Math.PI*1.08,Math.PI*1.42);out.stroke();out.restore();
+})();
+</script>

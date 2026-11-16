@@ -5,13 +5,15 @@ import '../core/design/text_styles.dart';
 import '../core/design/tokens.dart';
 import '../core/widgets/ticking_builder.dart';
 import '../models/geo_data.dart';
+import '../models/location_integrity.dart';
 import '../models/map_kind.dart';
 import '../models/template.dart';
 import '../state/settings_controller.dart';
 import 'mini_map.dart';
+import 'map_credits.dart';
 
 const _stampShadows = [
-  Shadow(color: Colors.black, blurRadius: 4, offset: Offset(0, 1)),
+  Shadow(color: Color(0x66000000), blurRadius: 1, offset: Offset(0, .5)),
 ];
 
 /// The premium GPS geostamp. Rebuilds entirely from [config] + [settings], so
@@ -64,12 +66,43 @@ class GeoStamp extends StatelessWidget {
       alignment: Alignment.centerLeft,
       widthFactor: config.width,
       child: LayoutBuilder(
-        builder: (context, constraints) => _surface(constraints.maxWidth),
+        builder: (context, constraints) =>
+            _surface(context, constraints.maxWidth),
       ),
     );
   }
 
-  Widget _surface(double availableWidth) {
+  Widget _surface(BuildContext context, double availableWidth) {
+    if (geo.hasLocation && config.showsMap && MapTiles.available && realMap) {
+      return MapCreditsBuilder(
+        kind: settings.mapKind,
+        builder: (context, credit) => _content(context, availableWidth, credit),
+      );
+    }
+    return _content(context, availableWidth, null);
+  }
+
+  Widget _content(BuildContext context, double availableWidth, String? credit) {
+    final hasRealMap =
+        geo.hasLocation && config.showsMap && MapTiles.available && realMap;
+    final creditStyle = DefaultTextStyle.of(context).style.merge(
+      TextStyle(
+        fontSize: 9 * _s,
+        height: 1.15,
+        color: Colors.white,
+        shadows: _stampShadows,
+      ),
+    );
+    final creditHeight = 64 * _s;
+    final creditLayout = TextPainter(
+      text: TextSpan(text: credit ?? '', style: creditStyle),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+    )..layout(maxWidth: availableWidth);
+    // Never export uncredited imagery or clip provider names. Reserve the same
+    // credit area before/after metadata arrives so camera controls cannot shift.
+    final creditFits = credit != null && creditLayout.height <= creditHeight;
+    creditLayout.dispose();
     final mapWidth = (136 * _s * config.mapSize.scale).clamp(
       0.0,
       availableWidth * 0.45,
@@ -90,6 +123,7 @@ class GeoStamp extends StatelessWidget {
               compact: preview,
               showHints: !forCapture && !recording,
               realMap: realMap,
+              allowTiles: creditFits,
             ),
           )
         : null;
@@ -145,6 +179,7 @@ class GeoStamp extends StatelessWidget {
     );
 
     final row = Row(
+      key: const ValueKey('geostamp-row'),
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         if (map != null && config.mapSide == MapSide.left) ...[
@@ -159,9 +194,80 @@ class GeoStamp extends StatelessWidget {
       ],
     );
 
+    final warning =
+        geo.integrity != LocationIntegrity.trusted &&
+        geo.integrity != LocationIntegrity.unavailable;
+    final notice = warning
+        ? Text(
+            key: ValueKey(geo.integrity),
+            [
+              geo.integrity.warning,
+              if (geo.hasLocation) geo.accuracyStr(settings.unitSystem),
+              if (geo.locationNote.isNotEmpty) geo.locationNote,
+            ].join(' · '),
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 10 * _s,
+              height: 1.2,
+              color: const Color(0xFFFFD180),
+              fontWeight: FontWeight.w600,
+              shadows: _stampShadows,
+            ),
+          )
+        : const SizedBox.shrink();
+
     return IconTheme.merge(
       data: const IconThemeData(shadows: _stampShadows),
-      child: row,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Keep unused credit space above the visible stamp, never below it.
+          if (hasRealMap)
+            SizedBox(
+              key: const ValueKey('geostamp-map-credits'),
+              height: creditHeight,
+              width: double.infinity,
+              child: Align(
+                alignment: Alignment.bottomLeft,
+                child: Text(
+                  creditFits
+                      ? credit
+                      : 'Map unavailable: full credits could not be displayed.',
+                  style: creditStyle,
+                ),
+              ),
+            ),
+          // Reserve the warning area: GPS status never moves the stamp row.
+          SizedBox(
+            key: const ValueKey('geostamp-notice'),
+            height:
+                MediaQuery.textScalerOf(context).scale(10 * _s) * 3.6 + 4 * _s,
+            width: double.infinity,
+            child: Align(
+              alignment: Alignment.bottomLeft,
+              child: Padding(
+                padding: EdgeInsets.only(bottom: 4 * _s),
+                // Captures must include a new integrity warning immediately.
+                child: forCapture || recording
+                    ? notice
+                    : AnimatedSwitcher(
+                        duration: MediaQuery.disableAnimationsOf(context)
+                            ? Duration.zero
+                            : const Duration(milliseconds: 160),
+                        layoutBuilder: (current, previous) => Stack(
+                          alignment: Alignment.bottomLeft,
+                          children: [...previous, ?current],
+                        ),
+                        child: notice,
+                      ),
+              ),
+            ),
+          ),
+          row,
+        ],
+      ),
     );
   }
 }

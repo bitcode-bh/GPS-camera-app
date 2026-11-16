@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gps_camera_next/models/geo_data.dart';
+import 'package:gps_camera_next/models/location_integrity.dart';
 import 'package:gps_camera_next/models/template.dart';
+import 'package:gps_camera_next/widgets/mini_map.dart';
 import 'package:gps_camera_next/state/settings_controller.dart';
 import 'package:gps_camera_next/widgets/geo_stamp.dart';
 
@@ -59,5 +61,82 @@ void main() {
       findsNothing,
     );
     expect(find.textContaining('09 Nov 2026'), findsOneWidget);
+  });
+
+  testWidgets(
+    'integrity is burned in for every template, even with fields hidden',
+    (tester) async {
+      for (final integrity in [
+        LocationIntegrity.lowAccuracy,
+        LocationIntegrity.suspectedMock,
+        LocationIntegrity.suspectedSpoofing,
+      ]) {
+        for (final template in StampTemplate.values) {
+          final config = TemplateConfig.forTemplate(template)..fields.clear();
+          final geo = GeoData.demo().copyWith(integrity: integrity);
+          await tester.pumpWidget(stamp(geo, config));
+          expect(
+            find.textContaining(integrity.warning),
+            findsOneWidget,
+            reason: '${template.name}: ${integrity.name}',
+          );
+          expect(tester.takeException(), isNull);
+        }
+      }
+    },
+  );
+
+  testWidgets('stamp text and map consume the identical coordinate snapshot', (
+    tester,
+  ) async {
+    final geo = GeoData.demo();
+    final config = TemplateConfig.forTemplate(StampTemplate.advance);
+    await tester.pumpWidget(stamp(geo, config));
+    final map = tester.widget<MiniMap>(find.byType(MiniMap));
+    expect(map.lat, geo.lat);
+    expect(map.lon, geo.lon);
+    expect(
+      find.textContaining(geo.coords(SettingsController.instance.coordFormat)),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('GPS warning sits above the stamp without changing its layout', (
+    tester,
+  ) async {
+    final geo = GeoData.demo();
+    final config = TemplateConfig.forTemplate(StampTemplate.advance);
+    await tester.pumpWidget(stamp(geo, config));
+    final bounds = tester.getRect(find.byType(GeoStamp));
+    final map = tester.getRect(find.byType(MiniMap));
+    final coords = tester.getRect(
+      find.textContaining(geo.coords(SettingsController.instance.coordFormat)),
+    );
+    await tester.pumpWidget(
+      stamp(
+        geo.copyWith(
+          integrity: LocationIntegrity.suspectedMock,
+          locationNote: 'Android mock provider',
+        ),
+        config,
+      ),
+    );
+    await tester.pumpAndSettle();
+    final warning = find.textContaining('Mock Location');
+    expect(tester.getRect(warning).bottom, lessThanOrEqualTo(map.top));
+    expect(tester.getRect(find.byType(GeoStamp)), bounds);
+    expect(tester.getRect(find.byType(MiniMap)), map);
+    expect(
+      tester.getRect(
+        find.textContaining(
+          geo.coords(SettingsController.instance.coordFormat),
+        ),
+      ),
+      coords,
+    );
+    await tester.pumpWidget(stamp(geo, config));
+    await tester.pumpAndSettle();
+    expect(warning, findsNothing);
+    expect(tester.getRect(find.byType(MiniMap)), map);
   });
 }

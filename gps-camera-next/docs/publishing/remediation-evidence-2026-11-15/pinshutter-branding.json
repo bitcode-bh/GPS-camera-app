@@ -1,0 +1,16 @@
+{
+  "date": "2026-11-15",
+  "approved_app_name": "PinShutter",
+  "approved_store_title": "PinShutter: GPS Camera",
+  "developer": "bitcode.bh",
+  "package": "com.gpscamera.gps_camera_next.debug",
+  "apk_sha256": "2bfe7bfa18a25f9e10dfdb9de09406b9bae767a54e9babed389f40e24a9ba86a",
+  "apk_bytes": 171334286,
+  "flutter_tests_passed": 155,
+  "analysis": "clean",
+  "debug_build": "success",
+  "ios_plist": "valid; display name and fallback name PinShutter",
+  "existing_album_preserved": "GPS Camera Next",
+  "device_deployed": false,
+  "trademark_domain_clearance": "pending"
+}

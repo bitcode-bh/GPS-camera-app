@@ -12,15 +12,17 @@ import '../../core/signal_filters.dart';
 import '../../core/design/palette.dart';
 import '../../core/design/text_styles.dart';
 import '../../core/design/tokens.dart';
-import '../../core/glass.dart';
 import '../../core/widgets/transitions.dart';
+import '../../core/widgets/controls.dart';
 import '../../models/capture_options.dart';
 import '../../models/geo_data.dart';
+import '../../models/location_integrity.dart';
 import '../../models/media_item.dart';
 import '../../models/template.dart';
 import '../../services/camera_adjustments.dart';
 import '../../services/capture_service.dart';
 import '../../services/location_service.dart';
+import '../../services/geostamp_snapshot.dart';
 import '../../services/media_image.dart';
 import '../../services/media_library.dart';
 import '../../services/native.dart';
@@ -78,6 +80,9 @@ class _CameraScreenState extends State<CameraScreen>
 
   _Adjustment? _gestureAdjustment;
   Timer? _gestureReadoutTimer;
+  Timer? _adjustmentHideTimer;
+  bool _adjustmentsVisible = false;
+  static const _adjustmentIdle = Duration(seconds: 3);
   Offset _gestureOrigin = Offset.zero;
   int _gestureQuarterTurns = 0;
   double _gestureStartExposure = 0;
@@ -94,6 +99,7 @@ class _CameraScreenState extends State<CameraScreen>
 
   void _listenForOrientation() {
     _orientationSub ??= Native.gravity().listen((raw) {
+      _location.motion.add(raw);
       // Low-pass first, so a shake or a tap on the shutter is not a turn.
       final at = raw.length > 3
           ? Duration(microseconds: (raw[3] * 1e6).round())
@@ -131,16 +137,25 @@ class _CameraScreenState extends State<CameraScreen>
   /// fix in between (common indoors) does not blank the stamp while a good
   /// one from the last minute exists.
   GeoData? get _usableGeo {
-    final now = DateTime.now();
-    final geo = _freshGeo;
-    if (geo != null && geo.accuracy <= _settings.gpsAccuracyLimit) return geo;
-    final good = _lastGoodGeo;
-    return good != null &&
-            good.hasFreshFix(now) &&
-            good.accuracy <= _settings.gpsAccuracyLimit
-        ? good
-        : null;
+    final snapshot = _locationSnapshot(DateTime.now());
+    return snapshot.hasLocation ? snapshot : null;
   }
+
+  GeoData _locationSnapshot(DateTime now) => geostampSnapshot(
+    status: _gps,
+    now: now,
+    accuracyLimit: _settings.gpsAccuracyLimit.toDouble(),
+    mockPolicy: _settings.mockLocationPolicy,
+    lastGood: _lastGoodGeo,
+    heading: _compassHeading.value,
+  );
+
+  bool _requiresWarning(GeoData geo) =>
+      geo.integrity == LocationIntegrity.suspectedMock ||
+      geo.integrity == LocationIntegrity.suspectedSpoofing ||
+      (_settings.saveLocation &&
+          geo.hasLocation &&
+          geo.integrity == LocationIntegrity.lowAccuracy);
 
   GeoData? _lastGoodGeo;
 
@@ -156,8 +171,8 @@ class _CameraScreenState extends State<CameraScreen>
 
   /// Geo snapshot with the live compass heading folded in (used by the stamp,
   /// mini-map pin and capture so the heading/compass update in real time).
-  GeoData? get _stampGeo =>
-      _usableGeo?.copyWith(heading: _compassHeading.value);
+  GeoData get _stampGeo => _locationSnapshot(DateTime.now());
+  final _videoGeo = ValueNotifier<GeoData?>(null);
 
   CameraController? _cam;
   List<CameraDescription> _cameras = const [];
@@ -178,11 +193,11 @@ class _CameraScreenState extends State<CameraScreen>
   bool get _capturing => _phase == CameraPhase.capturing;
   bool get _shooting => _capturing || _phase == CameraPhase.countdown;
 
-  // The two reasons to hold the camera: the app is visible and nothing covers
-  // this screen. Everything else follows from them in [_syncSession].
+  // Hold the camera only while visible, uncovered and not exiting.
   bool _appVisible = true;
   bool _covered = false;
-  bool get _wantCamera => mounted && _appVisible && !_covered;
+  bool _exiting = false;
+  bool get _wantCamera => mounted && _appVisible && !_covered && !_exiting;
 
   /// Opening, closing and switching run one at a time, in order.
   Future<void> _session = Future.value();
@@ -226,7 +241,7 @@ class _CameraScreenState extends State<CameraScreen>
     _settings.addListener(_onSettings);
     _library.addListener(_onSettings);
     _machine.addListener(_onSettings);
-    _syncSession();
+    unawaited(_syncSession());
     unawaited(
       CaptureService.instance.migrateLegacyCaptures().then(
         (_) => _library.refresh(),
@@ -268,6 +283,7 @@ class _CameraScreenState extends State<CameraScreen>
       ..go(CameraPhase.released);
     _geoSub?.cancel();
     _gestureReadoutTimer?.cancel();
+    _adjustmentHideTimer?.cancel();
     _orientationSub?.cancel();
     _fixExpiry?.cancel();
     _recElapsed.dispose();
@@ -278,6 +294,7 @@ class _CameraScreenState extends State<CameraScreen>
     _cam?.dispose();
     _machine.dispose();
     _compassHeading.dispose();
+    _videoGeo.dispose();
     super.dispose();
   }
 
@@ -297,20 +314,24 @@ class _CameraScreenState extends State<CameraScreen>
         state == AppLifecycleState.inactive;
     if (visible == _appVisible) return;
     _appVisible = visible;
-    _syncSession();
+    unawaited(_syncSession());
   }
 
   /// Runs the camera, GPS and sensors only while this screen is in front.
-  void _syncSession() {
+  Future<void> _syncSession() {
     if (_wantCamera) {
       _listenForOrientation();
       _compassSub ??= Native.heading().listen(
         _onCompass,
         onError: (Object _) {},
       );
-      unawaited(_openCamera());
+      return _openCamera();
     } else {
       _stopLocation();
+      _adjustmentHideTimer?.cancel();
+      _adjustmentsVisible = false;
+      _adjustment = null;
+      _gestureAdjustment = null;
       _orientationSub?.cancel();
       _orientationSub = null;
       _compassSub?.cancel();
@@ -319,7 +340,7 @@ class _CameraScreenState extends State<CameraScreen>
         f.reset();
       }
       _headingFilter.reset();
-      unawaited(_closeCamera());
+      return _closeCamera();
     }
   }
 
@@ -351,12 +372,16 @@ class _CameraScreenState extends State<CameraScreen>
       builder: (context) => AlertDialog(
         backgroundColor: Palette.surfaceSolid,
         title: const Text('Location for your stamp'),
+        scrollable: true,
         content: const Text(
           'Location is used while the app is open to add coordinates, an '
           'address and a small map to your photos and videos. To draw the map '
           'and find the address, your position is sent to our map provider '
-          '(Esri) and your phone\'s address service. We don\'t store or sell '
-          'your location.',
+          '(Esri) and your phone\'s address service. Precise map areas may '
+          'reveal your location. Capture locations are saved in the app\'s '
+          'local library index and may appear in the visible stamp and photo '
+          'metadata. We do not operate a location-upload server or sell your '
+          'location. You can continue without granting location access.',
         ),
         actions: [
           TextButton(
@@ -381,23 +406,21 @@ class _CameraScreenState extends State<CameraScreen>
       final fix = status.fix;
       setState(() {
         _gps = status;
-        if (fix != null && fix.accuracy <= _settings.gpsAccuracyLimit) {
+        if (fix != null &&
+            status.integrity == LocationIntegrity.trusted &&
+            fix.accuracy <= _settings.gpsAccuracyLimit &&
+            (fix.rawAccuracy ?? fix.accuracy) <= _settings.gpsAccuracyLimit) {
           _lastGoodGeo = fix;
         }
       });
+      if (_video != null) _sampleVideoLocation(_videoClock.elapsedMilliseconds);
       _fixExpiry?.cancel();
       final fixTime = status.fix?.fixTime;
       if (fixTime != null) {
         // Rebuild when the fix ages out so it stops being shown as current.
-        final remaining = fixTime
-            .add(GeoData.fixLifetime)
-            .difference(DateTime.now());
-        _fixExpiry = Timer(
-          remaining.isNegative ? Duration.zero : remaining,
-          () {
-            if (mounted) setState(() {});
-          },
-        );
+        _fixExpiry = Timer.periodic(const Duration(seconds: 1), (_) {
+          if (mounted) setState(() {});
+        });
       }
     });
   }
@@ -406,6 +429,8 @@ class _CameraScreenState extends State<CameraScreen>
     _geoSub?.cancel();
     _geoSub = null;
     _fixExpiry?.cancel();
+    _lastGoodGeo = null;
+    _gps = const GpsStatus(GpsState.unavailable);
   }
 
   Future<void> _openCameraSettings() async {
@@ -603,6 +628,12 @@ class _CameraScreenState extends State<CameraScreen>
     }
   }
 
+  void _cycleZoom() {
+    _showGestureValue(_Adjustment.zoom);
+    _setZoom(CameraAdjustments.nextZoomPreset(_zoom, _minZoom, _maxZoom));
+    _fadeGestureValue();
+  }
+
   void _onScaleStart(ScaleStartDetails details) {
     _baseZoom = _zoom;
     _gestureStartExposure = _exposure;
@@ -610,6 +641,7 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   void _onViewfinderPointerDown(PointerDownEvent event) {
+    _revealAdjustments(holding: true);
     if (_viewfinderPointers.isEmpty) {
       _gestureOrigin = event.localPosition;
       _gestureQuarterTurns = _iconQuarterTurns % 4;
@@ -623,6 +655,26 @@ class _CameraScreenState extends State<CameraScreen>
 
   void _onViewfinderPointerEnd(PointerEvent event) {
     _viewfinderPointers.remove(event.pointer);
+    if (_viewfinderPointers.isEmpty) _deferAdjustmentHide();
+  }
+
+  void _revealAdjustments({bool holding = false}) {
+    if (!_cameraReady || _shooting || _showFreeze || _settingsOpen) return;
+    _adjustmentHideTimer?.cancel();
+    if (!_adjustmentsVisible) setState(() => _adjustmentsVisible = true);
+    if (!holding) _deferAdjustmentHide();
+  }
+
+  void _deferAdjustmentHide() {
+    _adjustmentHideTimer?.cancel();
+    _adjustmentHideTimer = Timer(_adjustmentIdle, () {
+      if (!mounted) return;
+      setState(() {
+        _adjustmentsVisible = false;
+        _adjustment = null;
+        _gestureAdjustment = null;
+      });
+    });
   }
 
   // Convert fixed portrait coordinates into the space the user is holding.
@@ -671,6 +723,7 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   void _showGestureValue(_Adjustment adjustment) {
+    _revealAdjustments(holding: true);
     _gestureReadoutTimer?.cancel();
     if (_gestureAdjustment == adjustment) return;
     setState(() {
@@ -734,6 +787,7 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   void _fadeGestureValue() {
+    _deferAdjustmentHide();
     if (_gestureAdjustment == null) return;
     _gestureReadoutTimer?.cancel();
     _gestureReadoutTimer = Timer(const Duration(milliseconds: 850), () {
@@ -742,6 +796,7 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   void _toggleAdjustment(_Adjustment adjustment) {
+    _revealAdjustments();
     setState(() {
       _gestureAdjustment = null;
       _adjustment = _adjustment == adjustment ? null : adjustment;
@@ -750,6 +805,7 @@ class _CameraScreenState extends State<CameraScreen>
 
   void _selectLeftAdjustment(_Adjustment adjustment) {
     if (!_cameraReady || _shooting) return;
+    _revealAdjustments();
     if (_leftAdjustment == adjustment) {
       _toggleAdjustment(adjustment);
       return;
@@ -882,6 +938,7 @@ class _CameraScreenState extends State<CameraScreen>
     }
     final cam = _cam;
     if (!_cameraReady || cam == null) return;
+    _revealAdjustments();
     setState(() {
       _focus = local;
       _gestureAdjustment = null;
@@ -1076,13 +1133,15 @@ class _CameraScreenState extends State<CameraScreen>
     if (!_machine.go(CameraPhase.capturing)) return;
     final shutterTime = DateTime.now();
     final stampQuarterTurns = _iconQuarterTurns;
-    final captureGeo = _settings.stampEnabled
-        ? (_stampGeo?.copyWith(time: shutterTime) ??
-              GeoData.withoutLocation(shutterTime))
+    final snapshotGeo = _locationSnapshot(shutterTime);
+    final captureGeo = _settings.stampEnabled || _requiresWarning(snapshotGeo)
+        ? snapshotGeo
         : null;
-    final geotag = _settings.saveLocation ? _usableGeo : null;
+    final geotag = _settings.saveLocation && snapshotGeo.hasLocation
+        ? snapshotGeo
+        : null;
     if ((_settings.stampEnabled || _settings.saveLocation) &&
-        _usableGeo == null) {
+        !snapshotGeo.hasLocation) {
       _toast('GPS unavailable. Coordinates omitted.');
     }
     final saveOriginal = _settings.saveOriginal;
@@ -1148,6 +1207,9 @@ class _CameraScreenState extends State<CameraScreen>
         snapshot,
         taken: shutterTime,
         geotag: geotag,
+        locationDescription: (_settings.saveLocation || captureGeo != null)
+            ? snapshotGeo.locationDescription
+            : null,
         quarterTurns: stampQuarterTurns,
         saveOriginal: saveOriginal,
       ),
@@ -1161,6 +1223,7 @@ class _CameraScreenState extends State<CameraScreen>
     Future<ui.Image?> snapshot, {
     required DateTime taken,
     required GeoData? geotag,
+    required String? locationDescription,
     required int quarterTurns,
     required bool saveOriginal,
   }) async {
@@ -1177,6 +1240,7 @@ class _CameraScreenState extends State<CameraScreen>
         sourcePath: rawShotPath,
         latitude: geotag?.lat,
         longitude: geotag?.lon,
+        locationDescription: locationDescription,
         quarterTurns: quarterTurns,
       );
       if (tagged == null && geotag != null) {
@@ -1196,13 +1260,19 @@ class _CameraScreenState extends State<CameraScreen>
           taken: taken,
           latitude: geotag?.lat,
           longitude: geotag?.lon,
+          locationDescription: locationDescription,
         );
         if (original == null) _toast('Could not save the original photo');
         originalKey = CaptureService.mediaKey(original, video: false);
       }
       final location = geotag == null
           ? null
-          : MediaLocation(geotag.lat, geotag.lon, place: geotag.place);
+          : MediaLocation(
+              geotag.lat,
+              geotag.lon,
+              place: geotag.place,
+              integrityNote: geotag.integrity.warning,
+            );
       final key = CaptureService.mediaKey(uri, video: false);
       if (key != null) {
         await _library.index.recordCapture(
@@ -1254,16 +1324,27 @@ class _CameraScreenState extends State<CameraScreen>
       }
       return;
     }
-    final geo = _settings.saveLocation ? _usableGeo : null;
+    final snapshotGeo = _locationSnapshot(DateTime.now());
+    final geo = _settings.saveLocation && snapshotGeo.hasLocation
+        ? snapshotGeo
+        : null;
     _video = _VideoJob(
       startedAt: DateTime.now(),
       quarterTurns: _iconQuarterTurns,
-      stamp: _settings.stampEnabled,
+      stamp: _settings.stampEnabled || _requiresWarning(snapshotGeo),
       keepOriginal: _settings.saveOriginal,
       clock24: _settings.clock24,
       location: geo == null
           ? null
-          : MediaLocation(geo.lat, geo.lon, place: geo.place),
+          : MediaLocation(
+              geo.lat,
+              geo.lon,
+              place: geo.place,
+              integrityNote: [
+                'Recording start location',
+                if (geo.integrity.warning.isNotEmpty) geo.integrity.warning,
+              ].join(' · '),
+            ),
     );
     _videoClock
       ..reset()
@@ -1282,45 +1363,68 @@ class _CameraScreenState extends State<CameraScreen>
 
   void _sampleVideoLocation(int atMs) {
     final job = _video;
-    if (job == null || !job.stamp) return;
-    final geo = _usableGeo;
+    if (job == null) return;
+    if (job.samples.isNotEmpty) {
+      atMs = math.max(atMs, (job.samples.last['atMs'] as int) + 1);
+    }
+    final geo = _locationSnapshot(DateTime.now());
+    // A new integrity warning must survive even if recording began with the
+    // optional stamp switched off.
+    if (_requiresWarning(geo)) job.stamp = true;
+    if (!job.stamp) {
+      job.samples.add({'atMs': atMs, 'label': 'Stamp disabled'});
+      return;
+    }
+    _videoGeo.value = geo;
     final config = _templates.config;
-    final location = geo == null
-        ? 'GPS unavailable'
-        : [
-            if (config.has(StampField.latLong))
-              '${geo.lat.toStringAsFixed(6)}, ${geo.lon.toStringAsFixed(6)}',
-            if (config.has(StampField.accuracy))
-              geo.accuracyStr(_settings.unitSystem),
-          ].join('  ');
-    if (job.samples.isEmpty || job.samples.last['label'] != location) {
-      job.samples.add({'atMs': atMs, 'label': location});
-    }
-    // ~11 m steps, so GPS jitter alone never re-renders the stamp.
-    final frameLabel = geo == null
-        ? ''
-        : '${geo.place}|${geo.lat.toStringAsFixed(4)},'
-              '${geo.lon.toStringAsFixed(4)}';
-    if (frameLabel != job.frameLabel) {
-      job.frameLabel = frameLabel;
-      job.frameDue = true;
-    }
-    if (job.frameDue &&
-        (job.lastFrameMs < 0 || atMs - job.lastFrameMs >= 10000)) {
-      job.frameDue = false;
-      job.lastFrameMs = atMs;
-      unawaited(_captureStampFrame(job, atMs));
-    }
+    final location = [
+      if (!geo.hasLocation) 'GPS unavailable',
+      if (geo.integrity.warning.isNotEmpty) geo.integrity.warning,
+      if (geo.locationNote.isNotEmpty) geo.locationNote,
+      if (geo.hasLocation) ...[
+        if (config.has(StampField.latLong))
+          '${geo.lat.toStringAsFixed(6)}, ${geo.lon.toStringAsFixed(6)}',
+        if (config.has(StampField.accuracy) ||
+            geo.integrity != LocationIntegrity.trusted)
+          geo.accuracyStr(_settings.unitSystem),
+      ],
+    ].join('  ');
+    job.samples.add({'atMs': atMs, 'label': location});
+    // One immutable sample per second, plus immediate integrity changes.
+    // Serialising frame writes also lets stop/export wait for the final PNG.
+    job.pendingFrames = job.pendingFrames.then(
+      (_) => _captureStampFrame(job, atMs, geo),
+    );
   }
 
   /// Saves a picture of the stamp exactly as it is drawn on screen.
-  Future<void> _captureStampFrame(_VideoJob job, int atMs) async {
+  Future<void> _captureStampFrame(_VideoJob job, int atMs, GeoData geo) async {
+    // A superseded sample gets the matching native text fallback for its
+    // interval; never pair its text with a different sample's map.
+    if (!mounted || !_wantCamera) {
+      return;
+    }
+    try {
+      await WidgetsBinding.instance.endOfFrame.timeout(
+        const Duration(milliseconds: 500),
+      );
+    } on TimeoutException {
+      return;
+    }
+    if (!mounted || !identical(_videoGeo.value, geo)) {
+      return;
+    }
     final stamp = _stampKey.currentContext?.findRenderObject();
     // Measured inside the rotated stamp layer, so a sideways recording places
     // the stamp in the upright (landscape) frame, as a sideways photo does.
     final frame = _stampSpaceKey.currentContext?.findRenderObject();
-    if (stamp is! RenderRepaintBoundary || frame is! RenderBox) return;
-    if (!stamp.hasSize || !frame.hasSize || frame.size.isEmpty) return;
+    if (stamp is! RenderRepaintBoundary ||
+        frame is! RenderBox ||
+        !stamp.hasSize ||
+        !frame.hasSize ||
+        frame.size.isEmpty) {
+      return;
+    }
     try {
       final origin = stamp.localToGlobal(Offset.zero, ancestor: frame);
       final size = frame.size;
@@ -1332,7 +1436,9 @@ class _CameraScreenState extends State<CameraScreen>
       final image = await stamp.toImage(pixelRatio: 3);
       final png = await image.toByteData(format: ui.ImageByteFormat.png);
       image.dispose();
-      if (png == null) return;
+      if (png == null) {
+        return;
+      }
       final file = File(
         '${Directory.systemTemp.path}/stamp_'
         '${job.startedAt.millisecondsSinceEpoch}_$atMs.png',
@@ -1351,6 +1457,8 @@ class _CameraScreenState extends State<CameraScreen>
     _video = null;
     final file = await cam.stopVideoRecording();
     if (job == null) return;
+    await job.pendingFrames;
+    if (mounted) _videoGeo.value = null;
     if (mounted) setState(() => _videoExporting = true);
     unawaited(_exportVideo(file.path, job));
   }
@@ -1429,17 +1537,91 @@ class _CameraScreenState extends State<CameraScreen>
     });
   }
 
+  Widget _cameraNotice() {
+    // Transient UI messages never enter a saved photo or video stamp.
+    final visible =
+        _notificationMsg != null &&
+        !_settingsOpen &&
+        !_machine.isRecording &&
+        !_showFreeze;
+    return IgnorePointer(
+      child: SizedBox(
+        key: const ValueKey('camera-notification'),
+        height: 48,
+        child: Align(
+          alignment: Alignment.bottomLeft,
+          child: _showFreeze
+              ? const SizedBox.shrink()
+              : AnimatedSwitcher(
+                  duration: MediaQuery.disableAnimationsOf(context)
+                      ? Duration.zero
+                      : const Duration(milliseconds: 160),
+                  layoutBuilder: (current, previous) => Stack(
+                    alignment: Alignment.bottomLeft,
+                    children: [...previous, ?current],
+                  ),
+                  child: visible
+                      ? Semantics(
+                          key: ValueKey(_notificationMsg),
+                          liveRegion: true,
+                          child: Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Text(
+                              _notificationMsg!,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppText.bodyHi.copyWith(
+                                color: Colors.white,
+                                shadows: const [
+                                  Shadow(
+                                    color: Colors.black,
+                                    blurRadius: 4,
+                                    offset: Offset(0, 1),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+        ),
+      ),
+    );
+  }
+
   // ── Navigation ──────────────────────────────────────────────────────────
+  Future<void> _exitCamera() async {
+    if (_exiting) return;
+    if (_capturing || _videoExporting) {
+      _toast('Finishing capture…');
+      return;
+    }
+    _exiting = true;
+    try {
+      // Release preview surfaces before Android detaches the Flutter engine.
+      await _syncSession();
+      await _saves;
+      await SystemNavigator.pop();
+    } catch (_) {
+      _exiting = false;
+      if (mounted) {
+        unawaited(_syncSession());
+        _toast('Could not close the camera. Try again.');
+      }
+    }
+  }
+
   /// The Library covers this screen, so the camera and GPS rest meanwhile.
   Future<void> _openLibrary() async {
     if (_covered) return;
     _covered = true;
-    _syncSession();
+    unawaited(_syncSession());
     await Navigator.of(
       context,
     ).push(MaterialPageRoute<void>(builder: (_) => const LibraryScreen()));
     _covered = false;
-    if (mounted) _syncSession();
+    if (mounted) unawaited(_syncSession());
   }
 
   void _openStampSettings() {
@@ -1502,9 +1684,7 @@ class _CameraScreenState extends State<CameraScreen>
     Text value(String text, {bool selected = false, bool enabled = true}) =>
         Text(
           text,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
+          style: AppText.label.copyWith(
             color: !enabled
                 ? Colors.white38
                 : (selected ? cameraYellow : Colors.white),
@@ -1573,7 +1753,7 @@ class _CameraScreenState extends State<CameraScreen>
               plain: true,
               iconTurns: turns,
               selected: zoomSelected,
-              onTap: () => _toggleAdjustment(_Adjustment.zoom),
+              onTap: _cycleZoom,
               child: value(formatCameraZoom(_zoom), selected: zoomSelected),
             ),
         ],
@@ -1599,141 +1779,153 @@ class _CameraScreenState extends State<CameraScreen>
       bottom: 0,
       child: Align(
         alignment: zoom ? Alignment.centerRight : Alignment.centerLeft,
-        child: SizedBox(
-          width: CameraAdjustmentRail.touchWidth,
-          height: 174,
-          child: Stack(
-            clipBehavior: Clip.none,
-            alignment: Alignment.center,
-            children: [
-              AnimatedSwitcher(
-                duration: duration,
-                reverseDuration: reducedMotion
-                    ? Duration.zero
-                    : const Duration(milliseconds: 160),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                layoutBuilder: (current, previous) => Stack(
-                  alignment: Alignment.center,
-                  clipBehavior: Clip.none,
-                  children: [
-                    for (final child in previous)
-                      IgnorePointer(child: ExcludeSemantics(child: child)),
-                    ?current,
-                  ],
-                ),
-                child: expanded
-                    ? IgnorePointer(
-                        key: ValueKey(adjustment),
-                        ignoring: !pinned,
-                        child: GestureDetector(
-                          onDoubleTap: _resetAdjustments,
-                          child: CameraAdjustmentRail(
-                            label: '$name adjustment',
-                            value: whiteBalance
-                                ? _whiteBalance.toDouble()
-                                : (zoom ? _zoom : _exposure),
-                            min: whiteBalance
-                                ? _minKelvin.toDouble()
-                                : (zoom ? _minZoom : _minExp),
-                            max: whiteBalance
-                                ? _maxKelvin.toDouble()
-                                : (zoom ? _maxZoom : _maxExp),
-                            exposure: !zoom && !whiteBalance,
-                            whiteBalance: whiteBalance,
-                            autoWhiteBalance: whiteBalance && _kelvin == null,
-                            baseline: whiteBalance
-                                ? _defaultKelvin.toDouble()
-                                : null,
-                            onChanged: (value) {
-                              if (!zoom && adjustment != _leftAdjustment) {
-                                return;
-                              }
-                              _showGestureValue(adjustment);
-                              if (zoom) {
-                                _setZoom(value);
-                              } else if (whiteBalance) {
-                                _setWhiteBalance(value);
-                              } else {
-                                _setExposure(value);
-                              }
-                            },
-                            onChangeEnd: (_) => _fadeGestureValue(),
+        child: Listener(
+          onPointerDown: (_) => _revealAdjustments(holding: true),
+          onPointerUp: (_) => _deferAdjustmentHide(),
+          onPointerCancel: (_) => _deferAdjustmentHide(),
+          child: SizedBox(
+            width: CameraAdjustmentRail.touchWidth,
+            height: 174,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.center,
+              children: [
+                AnimatedSwitcher(
+                  duration: duration,
+                  reverseDuration: reducedMotion
+                      ? Duration.zero
+                      : const Duration(milliseconds: 160),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  layoutBuilder: (current, previous) => Stack(
+                    alignment: Alignment.center,
+                    clipBehavior: Clip.none,
+                    children: [
+                      for (final child in previous)
+                        IgnorePointer(child: ExcludeSemantics(child: child)),
+                      ?current,
+                    ],
+                  ),
+                  child: expanded
+                      ? IgnorePointer(
+                          key: ValueKey(adjustment),
+                          ignoring: !pinned,
+                          child: GestureDetector(
+                            onDoubleTap: _resetAdjustments,
+                            child: CameraAdjustmentRail(
+                              animate:
+                                  _adjustmentsVisible &&
+                                  _wantCamera &&
+                                  !_showFreeze &&
+                                  !_settingsOpen,
+                              label: '$name adjustment',
+                              value: whiteBalance
+                                  ? _whiteBalance.toDouble()
+                                  : (zoom ? _zoom : _exposure),
+                              min: whiteBalance
+                                  ? _minKelvin.toDouble()
+                                  : (zoom ? _minZoom : _minExp),
+                              max: whiteBalance
+                                  ? _maxKelvin.toDouble()
+                                  : (zoom ? _maxZoom : _maxExp),
+                              exposure: !zoom && !whiteBalance,
+                              whiteBalance: whiteBalance,
+                              autoWhiteBalance: whiteBalance && _kelvin == null,
+                              baseline: whiteBalance
+                                  ? _defaultKelvin.toDouble()
+                                  : null,
+                              onChanged: (value) {
+                                if (!zoom && adjustment != _leftAdjustment) {
+                                  return;
+                                }
+                                _showGestureValue(adjustment);
+                                if (zoom) {
+                                  _setZoom(value);
+                                } else if (whiteBalance) {
+                                  _setWhiteBalance(value);
+                                } else {
+                                  _setExposure(value);
+                                }
+                              },
+                              onChangeEnd: (_) => _fadeGestureValue(),
+                            ),
                           ),
-                        ),
-                      )
-                    : Semantics(
-                        key: ValueKey('camera-$label-hint'),
-                        label: 'Show ${name.toLowerCase()} adjustment',
-                        button: true,
-                        onTap: () => _toggleAdjustment(adjustment),
-                        child: IgnorePointer(
-                          child: SizedBox(
-                            width: CameraAdjustmentRail.touchWidth,
-                            height: 128,
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                for (var i = 0; i < 6; i++)
-                                  const Padding(
-                                    padding: EdgeInsets.symmetric(vertical: 2),
-                                    child: DecoratedBox(
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: Color(0xCCFFFFFF),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            offset: Offset(0, 1),
-                                            color: Colors.black,
-                                          ),
-                                        ],
+                        )
+                      : Semantics(
+                          key: ValueKey('camera-$label-hint'),
+                          label: 'Show ${name.toLowerCase()} adjustment',
+                          button: true,
+                          onTap: () => _toggleAdjustment(adjustment),
+                          child: IgnorePointer(
+                            child: SizedBox(
+                              width: CameraAdjustmentRail.touchWidth,
+                              height: 128,
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  for (var i = 0; i < 6; i++)
+                                    const Padding(
+                                      padding: EdgeInsets.symmetric(
+                                        vertical: 2,
                                       ),
-                                      child: SizedBox.square(dimension: 2),
+                                      child: DecoratedBox(
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: Color(0xCCFFFFFF),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              offset: Offset(0, 1),
+                                              color: Colors.black,
+                                            ),
+                                          ],
+                                        ),
+                                        child: SizedBox.square(dimension: 2),
+                                      ),
                                     ),
-                                  ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
+                ),
+                if (whiteBalance && expanded)
+                  Positioned(
+                    left: 46,
+                    top: 158,
+                    child: IgnorePointer(
+                      child: Text(
+                        '$_minKelvin–$_maxKelvin K',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.white,
+                          shadows: [
+                            Shadow(color: Colors.black, offset: Offset(0, 1)),
+                          ],
+                        ),
                       ),
-              ),
-              if (whiteBalance && expanded)
-                Positioned(
-                  left: 46,
-                  top: 158,
+                    ),
+                  ),
+                AnimatedPositioned(
+                  duration: duration,
+                  curve: Curves.easeOutCubic,
+                  top: expanded ? 158 : 110,
                   child: IgnorePointer(
-                    child: Text(
-                      '$_minKelvin–$_maxKelvin K',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Colors.white,
-                        shadows: [
-                          Shadow(color: Colors.black, offset: Offset(0, 1)),
-                        ],
+                    child: ExcludeSemantics(
+                      child: Text(
+                        label,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.white,
+                          shadows: [
+                            Shadow(color: Colors.black, offset: Offset(0, 1)),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              AnimatedPositioned(
-                duration: duration,
-                curve: Curves.easeOutCubic,
-                top: expanded ? 158 : 110,
-                child: IgnorePointer(
-                  child: ExcludeSemantics(
-                    child: Text(
-                      label,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Colors.white,
-                        shadows: [
-                          Shadow(color: Colors.black, offset: Offset(0, 1)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -1776,22 +1968,15 @@ class _CameraScreenState extends State<CameraScreen>
           _menuHandle(),
           const Align(
             alignment: Alignment.centerLeft,
-            child: Text(
-              'GPS Stamp',
-              style: TextStyle(
-                fontSize: 17,
-                color: Colors.white,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
+            child: Text('GPS Stamp', style: AppText.title),
           ),
           const SizedBox(height: 12),
-          _stampRow(
-            'Burn into capture',
-            _settings.stampEnabled ? 'On' : 'Off',
-            () => _settings.update(
-              () => _settings.stampEnabled = !_settings.stampEnabled,
-            ),
+          GlassSwitchTile(
+            label: 'Burn into capture',
+            icon: Icons.layers_outlined,
+            value: _settings.stampEnabled,
+            onChanged: (value) =>
+                _settings.update(() => _settings.stampEnabled = value),
           ),
           _stampRow(
             'Template',
@@ -1811,20 +1996,20 @@ class _CameraScreenState extends State<CameraScreen>
               () => _toggleMapSide(_templates.config.mapSide != MapSide.left),
             ),
           _stampRow('Edit stamp', 'Customize', _openStampEditor),
-          _stampRow(
-            'Save original',
-            _settings.saveOriginal ? 'On' : 'Off',
-            () => _settings.update(
-              () => _settings.saveOriginal = !_settings.saveOriginal,
-            ),
+          GlassSwitchTile(
+            label: 'Save original',
+            icon: Icons.photo_outlined,
+            value: _settings.saveOriginal,
+            onChanged: (value) =>
+                _settings.update(() => _settings.saveOriginal = value),
           ),
           if (_captureMode == CameraMode.photo)
-            _stampRow(
-              'Embed GPS in photo metadata',
-              _settings.saveLocation ? 'On' : 'Off',
-              () => _settings.update(
-                () => _settings.saveLocation = !_settings.saveLocation,
-              ),
+            GlassSwitchTile(
+              label: 'Embed GPS in photo metadata',
+              icon: Icons.location_on_outlined,
+              value: _settings.saveLocation,
+              onChanged: (value) =>
+                  _settings.update(() => _settings.saveLocation = value),
             ),
           _stampRow('Display & units', 'Settings', () {
             _dismissMenus();
@@ -1865,6 +2050,15 @@ class _CameraScreenState extends State<CameraScreen>
       GpsState.acquiring => ('GPS', 'Searching…', () {}),
       GpsState.stale ||
       GpsState.unavailable => ('No GPS signal', 'Retry', _startLocation),
+      GpsState.fix when _gps.integrity == LocationIntegrity.suspectedMock => (
+        'Mock location detected',
+        _settings.mockLocationPolicy == MockLocationPolicy.omitCoordinates
+            ? 'GPS omitted'
+            : 'Labeled',
+        () => showSettingsCategory(context, SettingsCat.display),
+      ),
+      GpsState.fix when _gps.integrity == LocationIntegrity.suspectedSpoofing =>
+        ('Location unverified', 'Suspected spoofing', () {}),
       GpsState.fix when _gps.approximate => (
         'Approximate location only',
         'Open Settings',
@@ -1880,25 +2074,27 @@ class _CameraScreenState extends State<CameraScreen>
   }
 
   Widget _stampRow(String label, String value, VoidCallback action) =>
-      TextButton(
-        onPressed: action,
-        style: TextButton.styleFrom(
-          padding: EdgeInsets.zero,
-          minimumSize: const Size(double.infinity, 48),
-          foregroundColor: Colors.white,
-        ),
-        child: Row(
-          children: [
-            Expanded(child: Text(label)),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                value,
-                textAlign: TextAlign.end,
-                style: const TextStyle(color: cameraYellow),
-              ),
+      SettingsTap(
+        onTap: action,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 56),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: Insets.xs),
+            child: Row(
+              children: [
+                const SizedBox(width: 36),
+                Expanded(child: Text(label, style: AppText.bodyHi)),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    value,
+                    textAlign: TextAlign.end,
+                    style: AppText.label.copyWith(color: cameraYellow),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       );
 
@@ -1910,13 +2106,15 @@ class _CameraScreenState extends State<CameraScreen>
     final bottomPad = mq.padding.bottom;
 
     return PopScope(
-      canPop: !_settingsOpen && _adjustment == null,
+      canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         if (_settingsOpen) {
           _dismissMenus();
-        } else {
+        } else if (_adjustment != null) {
           setState(() => _adjustment = null);
+        } else {
+          unawaited(_exitCamera());
         }
       },
       child: Scaffold(
@@ -1947,7 +2145,7 @@ class _CameraScreenState extends State<CameraScreen>
             } else {
               boxH = wh == null ? areaH : math.min(screenW / wh, areaH);
               boxW = wh == null ? screenW : math.min(screenW, boxH * wh);
-              viewfinderTop = headerBottom + (areaH - boxH) / 2;
+              viewfinderTop = headerBottom;
             }
             final viewfinderLeft = (screenW - boxW) / 2;
             final viewfinderRight = viewfinderLeft;
@@ -1957,7 +2155,7 @@ class _CameraScreenState extends State<CameraScreen>
               0.0,
               viewfinderTop + boxH - (screenH - dockTop),
             );
-            const stampInset = 14.0;
+            const stampInset = 6.0;
             final heldHeight = _iconQuarterTurns.isOdd ? boxW : boxH;
             final canShowRails = heldHeight >= 174;
             final showControls = _cameraReady && !_showFreeze && !_settingsOpen;
@@ -1982,15 +2180,18 @@ class _CameraScreenState extends State<CameraScreen>
                         _templates,
                         _settings,
                         _compassHeading,
+                        _videoGeo,
                       ]),
                       builder: (context, _) {
+                        final liveGeo = _stampGeo;
                         final geo = _showFreeze
                             ? _captureGeo
-                            : (_settings.stampEnabled
-                                  ? (_stampGeo ??
-                                        GeoData.withoutLocation(DateTime.now()))
-                                  : null);
-                        if (geo == null) return const SizedBox.shrink();
+                            : (_video?.stamp == true
+                                  ? (_videoGeo.value ?? liveGeo)
+                                  : (_settings.stampEnabled ||
+                                            _requiresWarning(liveGeo)
+                                        ? liveGeo
+                                        : null));
                         final turns =
                             (_showFreeze
                                 ? _captureQuarterTurns
@@ -2046,28 +2247,54 @@ class _CameraScreenState extends State<CameraScreen>
                                       _toggleMapSide(_stampDragDx < 0);
                                     }
                                   },
-                                  child: RepaintBoundary(
-                                    key: _stampKey,
-                                    child: GeoStamp(
-                                      geo: geo,
-                                      forCapture: _showFreeze,
-                                      recording: _machine.recordingBusy,
-                                      config: _templates.config,
-                                      settings: _settings,
-                                      onMapTap:
-                                          _machine.recordingBusy || _capturing
-                                          ? null
-                                          : () {
-                                              showMapZoomPopup(
-                                                context,
-                                                lat: geo.lat,
-                                                lon: geo.lon,
-                                                heading: geo.heading,
-                                                kind: _settings.mapKind,
-                                                initialZoom: _settings.mapZoom,
-                                              );
-                                            },
-                                    ),
+                                  child: Stack(
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      RepaintBoundary(
+                                        key: _stampKey,
+                                        child: geo == null
+                                            ? const SizedBox(
+                                                width: double.infinity,
+                                                height: 0,
+                                              )
+                                            : GeoStamp(
+                                                geo: geo,
+                                                forCapture: _showFreeze,
+                                                live:
+                                                    !_showFreeze &&
+                                                    _video == null,
+                                                recording:
+                                                    _machine.recordingBusy,
+                                                config: _templates.config,
+                                                settings: _settings,
+                                                onMapTap:
+                                                    _machine.recordingBusy ||
+                                                        _capturing
+                                                    ? null
+                                                    : () {
+                                                        showMapZoomPopup(
+                                                          context,
+                                                          lat: geo.lat,
+                                                          lon: geo.lon,
+                                                          heading: geo.heading,
+                                                          kind:
+                                                              _settings.mapKind,
+                                                          initialZoom:
+                                                              _settings.mapZoom,
+                                                        );
+                                                      },
+                                              ),
+                                      ),
+                                      Positioned(
+                                        left: 0,
+                                        right: 0,
+                                        top: 0,
+                                        child: FractionalTranslation(
+                                          translation: const Offset(0, -1),
+                                          child: _cameraNotice(),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
@@ -2153,95 +2380,70 @@ class _CameraScreenState extends State<CameraScreen>
                     height: boxH,
                     child: RotatedBox(
                       quarterTurns: _iconQuarterTurns,
-                      child: Stack(
-                        children: [
-                          if (canShowRails &&
-                              (_editingWhiteBalance || _minExp < _maxExp))
-                            _adjustmentGrip(_leftAdjustment),
-                          if (canShowRails && _minZoom < _maxZoom)
-                            _adjustmentGrip(_Adjustment.zoom),
-                          for (final adjustment in _Adjustment.values)
-                            Center(
-                              child: IgnorePointer(
-                                child: AnimatedOpacity(
-                                  key: ValueKey(
-                                    'camera-${adjustment.name}-readout',
-                                  ),
-                                  opacity: _gestureAdjustment == adjustment
-                                      ? 1
-                                      : 0,
-                                  duration:
-                                      mq.disableAnimations ||
-                                          _gestureAdjustment != null
-                                      ? Duration.zero
-                                      : const Duration(milliseconds: 140),
-                                  child: ExcludeSemantics(
-                                    excluding: _gestureAdjustment != adjustment,
-                                    child: Text(
-                                      switch (adjustment) {
-                                        _Adjustment.zoom => formatCameraZoom(
-                                          _zoom,
+                      child: IgnorePointer(
+                        ignoring: !_adjustmentsVisible,
+                        child: ExcludeSemantics(
+                          excluding: !_adjustmentsVisible,
+                          child: AnimatedOpacity(
+                            key: const ValueKey('camera-adjustment-controls'),
+                            opacity: _adjustmentsVisible ? 1 : 0,
+                            duration: mq.disableAnimations
+                                ? Duration.zero
+                                : const Duration(milliseconds: 180),
+                            child: Stack(
+                              children: [
+                                if (canShowRails &&
+                                    (_editingWhiteBalance || _minExp < _maxExp))
+                                  _adjustmentGrip(_leftAdjustment),
+                                if (canShowRails && _minZoom < _maxZoom)
+                                  _adjustmentGrip(_Adjustment.zoom),
+                                for (final adjustment in _Adjustment.values)
+                                  Center(
+                                    child: IgnorePointer(
+                                      child: AnimatedOpacity(
+                                        key: ValueKey(
+                                          'camera-${adjustment.name}-readout',
                                         ),
-                                        _Adjustment.exposure =>
-                                          '${_exposure > 0 ? '+' : ''}${_exposure.toStringAsFixed(1)} EV',
-                                        _Adjustment.whiteBalance =>
-                                          _kelvin == null
-                                              ? 'AWB'
-                                              : '$_whiteBalance K',
-                                        _Adjustment.reset =>
-                                          '${formatCameraZoom(_zoom)}  ·  ${_exposure == 0 ? '0' : _exposure.toStringAsFixed(1)} EV  ·  ${_kelvin == null ? 'AWB' : '$_whiteBalance K'}',
-                                      },
-                                      style: AppText.metric.copyWith(
-                                        color: Colors.white,
-                                        fontSize: 27,
-                                        fontWeight: FontWeight.w600,
-                                        shadows: const [
-                                          Shadow(
-                                            color: Colors.black,
-                                            offset: Offset(0, 1),
+                                        opacity:
+                                            _gestureAdjustment == adjustment
+                                            ? 1
+                                            : 0,
+                                        duration: mq.disableAnimations
+                                            ? Duration.zero
+                                            : const Duration(milliseconds: 160),
+                                        child: ExcludeSemantics(
+                                          excluding:
+                                              _gestureAdjustment != adjustment,
+                                          child: Text(
+                                            switch (adjustment) {
+                                              _Adjustment.zoom =>
+                                                formatCameraZoom(_zoom),
+                                              _Adjustment.exposure =>
+                                                '${_exposure > 0 ? '+' : ''}${_exposure.toStringAsFixed(1)} EV',
+                                              _Adjustment.whiteBalance =>
+                                                _kelvin == null
+                                                    ? 'AWB'
+                                                    : '$_whiteBalance K',
+                                              _Adjustment.reset =>
+                                                '${formatCameraZoom(_zoom)}  ·  ${_exposure == 0 ? '0' : _exposure.toStringAsFixed(1)} EV  ·  ${_kelvin == null ? 'AWB' : '$_whiteBalance K'}',
+                                            },
+                                            style: AppText.metric.copyWith(
+                                              color: Colors.white,
+                                              fontSize: 27,
+                                              fontWeight: FontWeight.w600,
+                                              shadows: const [
+                                                Shadow(
+                                                  color: Colors.black,
+                                                  offset: Offset(0, 1),
+                                                ),
+                                              ],
+                                            ),
                                           ),
-                                        ],
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                if (_notificationMsg != null &&
-                    !_settingsOpen &&
-                    !_machine.isRecording)
-                  Positioned(
-                    top: viewfinderTop + 10,
-                    left: viewfinderLeft + 16,
-                    right: viewfinderRight + 16,
-                    child: IgnorePointer(
-                      child: Center(
-                        child: Semantics(
-                          liveRegion: true,
-                          // A plain, solid notice that reads on any scene.
-                          child: DecoratedBox(
-                            decoration: const BoxDecoration(
-                              color: Palette.surfaceSolid,
-                              borderRadius: BorderRadius.all(
-                                Radius.circular(10),
-                              ),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 8,
-                              ),
-                              child: Text(
-                                _notificationMsg!,
-                                textAlign: TextAlign.center,
-                                style: AppText.bodyHi.copyWith(
-                                  color: Colors.white,
-                                ),
-                              ),
+                              ],
                             ),
                           ),
                         ),
@@ -2250,19 +2452,33 @@ class _CameraScreenState extends State<CameraScreen>
                   ),
 
                 // Recording indicator.
-                if (_machine.isRecording)
-                  Positioned(
-                    top: viewfinderTop + 10,
-                    left: viewfinderLeft,
-                    right: viewfinderRight,
-                    child: Center(
-                      child: ValueListenableBuilder(
-                        valueListenable: _recElapsed,
-                        builder: (context, elapsed, _) =>
-                            _RecPill(elapsed: elapsed),
+                Positioned(
+                  key: const ValueKey('camera-recording-indicator'),
+                  top: viewfinderTop + 10,
+                  left: viewfinderLeft,
+                  right: viewfinderRight,
+                  child: IgnorePointer(
+                    child: ExcludeSemantics(
+                      excluding: !_machine.isRecording,
+                      child: AnimatedOpacity(
+                        opacity: _machine.isRecording ? 1 : 0,
+                        duration: mq.disableAnimations
+                            ? Duration.zero
+                            : const Duration(milliseconds: 160),
+                        child: TickerMode(
+                          enabled: _machine.isRecording,
+                          child: Center(
+                            child: ValueListenableBuilder(
+                              valueListenable: _recElapsed,
+                              builder: (context, elapsed, _) =>
+                                  _RecordingIndicator(elapsed: elapsed),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
+                ),
 
                 // Self-timer countdown.
                 if (_phase == CameraPhase.countdown && _countdown > 0)
@@ -2294,6 +2510,7 @@ class _CameraScreenState extends State<CameraScreen>
                   right: Insets.xs,
                   bottom: controlBottom,
                   child: CameraControlBar(
+                    animate: _wantCamera && !_settingsOpen,
                     mode: _captureMode,
                     iconTurns: _iconQuarterTurns / 4,
                     busy:
@@ -2378,7 +2595,7 @@ class _VideoJob {
 
   final DateTime startedAt;
   final int quarterTurns; // How the phone was held when recording began.
-  final bool stamp;
+  bool stamp;
   final bool keepOriginal;
   final bool clock24;
   final MediaLocation? location;
@@ -2388,9 +2605,7 @@ class _VideoJob {
   /// as a photo. A new one is taken when the place changes.
   final frames = <Map<String, Object>>[];
   List<double>? stampRect; // left, bottom gap, width: fractions of the frame
-  int lastFrameMs = -1;
-  String? frameLabel;
-  bool frameDue = false;
+  Future<void> pendingFrames = Future.value();
 }
 
 // ── Viewfinder ───────────────────────────────────────────────────────────────
@@ -2539,15 +2754,15 @@ class _FocusReticleState extends State<_FocusReticle>
   }
 }
 
-class _RecPill extends StatelessWidget {
+class _RecordingIndicator extends StatelessWidget {
   final Duration elapsed;
-  const _RecPill({required this.elapsed});
+  const _RecordingIndicator({required this.elapsed});
 
   @override
   Widget build(BuildContext context) {
     String two(int n) => n.toString().padLeft(2, '0');
     final t = '${two(elapsed.inMinutes)}:${two(elapsed.inSeconds % 60)}';
-    return FrostedChip(
+    return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2559,6 +2774,13 @@ class _RecPill extends StatelessWidget {
             style: AppText.metric.copyWith(
               color: Palette.textHi,
               letterSpacing: 0.5,
+              shadows: const [
+                Shadow(
+                  color: Colors.black,
+                  blurRadius: 4,
+                  offset: Offset(0, 1),
+                ),
+              ],
             ),
           ),
         ],

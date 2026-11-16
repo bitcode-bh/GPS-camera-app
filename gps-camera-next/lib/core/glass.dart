@@ -50,15 +50,17 @@ class GlassSurface extends StatelessWidget {
     final br = BorderRadius.circular(radius);
     final content = Padding(padding: padding, child: child);
     // Solid by design: no backdrop blur, refraction, sheen or tint.
-    Widget surface = ClipRRect(
+    Widget surface = ClipRSuperellipse(
       borderRadius: br,
       child: DecoratedBox(
-        decoration: BoxDecoration(
+        decoration: ShapeDecoration(
           color: Palette.surfaceSolid,
-          borderRadius: br,
-          border: borderGradient == null
-              ? Border.all(color: Palette.strokeSolid)
-              : null,
+          shape: Corners.shape(
+            radius,
+            side: borderGradient == null
+                ? const BorderSide(color: Palette.strokeSolid)
+                : BorderSide.none,
+          ),
         ),
         child: content,
       ),
@@ -73,7 +75,10 @@ class GlassSurface extends StatelessWidget {
     }
     if (shadow != null) {
       surface = DecoratedBox(
-        decoration: BoxDecoration(boxShadow: shadow, borderRadius: br),
+        decoration: ShapeDecoration(
+          shadows: shadow,
+          shape: Corners.shape(radius),
+        ),
         child: surface,
       );
     }
@@ -104,12 +109,13 @@ class FrostedChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final br = BorderRadius.circular(radius);
     final box = DecoratedBox(
-      decoration: BoxDecoration(
+      decoration: ShapeDecoration(
         color: Palette.surfaceSolid,
-        borderRadius: br,
-        border: Border.all(color: Palette.strokeSolid),
+        shape: Corners.shape(
+          radius,
+          side: const BorderSide(color: Palette.strokeSolid),
+        ),
       ),
       child: Padding(padding: padding, child: child),
     );
@@ -118,7 +124,7 @@ class FrostedChip extends StatelessWidget {
   }
 }
 
-/// A circular glass action button (flash, settings, flip…). When [active] it
+/// A squircle glass action button (flash, settings, flip…). When [active] it
 /// fills with the brand gradient to signal the toggled-on state.
 class GlassIconButton extends StatelessWidget {
   final IconData icon;
@@ -146,7 +152,7 @@ class GlassIconButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final br = BorderRadius.circular(size);
+    final br = BorderRadius.circular(Corners.md);
     final inner = SizedBox(
       width: size,
       height: size,
@@ -175,12 +181,16 @@ class GlassIconButton extends StatelessWidget {
       ),
     );
 
-    // Solid circle; the active state is a lighter fill, never a glow.
+    // Solid squircle; the active state uses a lighter fill.
     final body = DecoratedBox(
-      decoration: BoxDecoration(
+      decoration: ShapeDecoration(
         color: active ? const Color(0xFF3A3A3C) : Palette.surfaceSolid,
-        shape: BoxShape.circle,
-        border: hasBorder ? Border.all(color: Palette.strokeSolid) : null,
+        shape: Corners.shape(
+          Corners.md,
+          side: hasBorder
+              ? const BorderSide(color: Palette.strokeSolid)
+              : BorderSide.none,
+        ),
       ),
       child: inner,
     );
@@ -194,7 +204,7 @@ class GlassIconButton extends StatelessWidget {
         enabled: onTap != null,
         child: Pressable(
           onTap: onTap,
-          child: ClipRRect(borderRadius: br, child: body),
+          child: ClipRSuperellipse(borderRadius: br, child: body),
         ),
       ),
     );
@@ -229,15 +239,12 @@ class _BorderPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
-    final contour = RRect.fromRectAndRadius(
-      rect.deflate(0.75),
-      Radius.circular(radius),
-    );
+    final contour = Corners.shape(radius).getOuterPath(rect.deflate(0.75));
     final paint = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5
       ..shader = gradient.createShader(rect);
-    canvas.drawRRect(contour, paint);
+    canvas.drawPath(contour, paint);
   }
 
   @override

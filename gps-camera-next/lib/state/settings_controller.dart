@@ -5,6 +5,7 @@ import '../models/capture_options.dart';
 import '../models/coordinates.dart';
 import '../models/geo_data.dart';
 import '../models/map_kind.dart';
+import '../models/location_integrity.dart';
 
 /// App-wide display preferences, persisted across launches. A tiny singleton
 /// [ChangeNotifier] so any screen can listen with a [ListenableBuilder] and get
@@ -27,6 +28,7 @@ class SettingsController extends ChangeNotifier {
   bool saveLocation = true;
   static const gpsAccuracyOptions = [10, 25, 50, 100];
   int gpsAccuracyLimit = 25;
+  MockLocationPolicy mockLocationPolicy = MockLocationPolicy.label;
   bool stampEnabled = true;
   int timerSeconds = 0;
   double mapZoom = 16.5;
@@ -72,6 +74,11 @@ class SettingsController extends ChangeNotifier {
         ? accuracyLimit!
         : 25;
     stampEnabled = s.getBool('stampEnabled') ?? true;
+    mockLocationPolicy = _read(
+      MockLocationPolicy.values,
+      s.getString('mockLocationPolicy'),
+      MockLocationPolicy.label,
+    );
     timerSeconds = s.getInt('timerSeconds') ?? 0;
     mapZoom = s.getDouble('mapZoom') ?? 16.5;
     libraryColumns = s.getInt('libraryColumns');
@@ -94,6 +101,7 @@ class SettingsController extends ChangeNotifier {
       s.setBool('watermark', watermark);
       s.setBool('saveLocation', saveLocation);
       s.setInt('gpsAccuracyLimit', gpsAccuracyLimit);
+      s.setString('mockLocationPolicy', mockLocationPolicy.name);
       s.setBool('stampEnabled', stampEnabled);
       s.setInt('timerSeconds', timerSeconds);
       s.setDouble('mapZoom', mapZoom);

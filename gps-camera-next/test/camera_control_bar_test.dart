@@ -4,6 +4,52 @@ import 'package:gps_camera_next/screens/camera/widgets/camera_control_bar.dart';
 import 'package:gps_camera_next/screens/camera/widgets/camera_design.dart';
 
 void main() {
+  testWidgets('capture states retain disk, shutter and gallery geometry', (
+    tester,
+  ) async {
+    Rect? shutterBounds;
+    Rect? galleryBounds;
+    for (final state in [
+      (mode: CameraMode.photo, busy: false, recording: false),
+      (mode: CameraMode.photo, busy: true, recording: false),
+      (mode: CameraMode.video, busy: false, recording: false),
+      (mode: CameraMode.video, busy: false, recording: true),
+      (mode: CameraMode.video, busy: true, recording: false),
+    ]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: CameraControlBar(
+              animate: false,
+              mode: state.mode,
+              busy: state.busy,
+              lastShot: null,
+              recording: state.recording,
+              onMode: (_) {},
+              onShutter: () {},
+              onFlip: () {},
+              onGallery: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final inner = find.byKey(const ValueKey('camera-shutter-inner'));
+      expect(tester.getSize(inner), const Size(62, 62));
+      final shutter = tester.getRect(inner);
+      final gallery = tester.getRect(
+        find.bySemanticsLabel(RegExp('^Open (gallery|video library)\$')),
+      );
+      expect(shutter, shutterBounds ??= shutter);
+      expect(gallery, galleryBounds ??= gallery);
+      expect(
+        find.byType(CameraCaptureGrid),
+        state.busy || state.recording ? findsOneWidget : findsNothing,
+      );
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+    }
+  });
+
   for (final width in [320.0, 390.0, 600.0]) {
     testWidgets('bottom bar taps and swipes at ${width.toInt()} dp', (
       tester,
@@ -102,6 +148,8 @@ void main() {
             hasSelectedState: true,
             hasEnabledState: true,
             isEnabled: true,
+            isFocusable: true,
+            hasFocusAction: true,
             hasTapAction: true,
           ),
         );
@@ -119,6 +167,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: CameraControlBar(
+            animate: false,
             mode: CameraMode.video,
             busy: false,
             lastShot: null,
@@ -163,6 +212,7 @@ void main() {
               body: Center(
                 child: StatefulBuilder(
                   builder: (context, setState) => CameraAdjustmentRail(
+                    animate: false,
                     label: exposure ? 'Exposure' : 'Zoom',
                     value: value,
                     min: minimum,

@@ -4,8 +4,10 @@ import 'dart:math' as math;
 import 'native.dart';
 import 'native_location.dart';
 import 'position_filter.dart';
+import 'location_integrity.dart';
 
 import '../models/geo_data.dart';
+import '../models/location_integrity.dart';
 
 /// Why there is, or is not, a position right now.
 enum GpsState {
@@ -19,10 +21,20 @@ enum GpsState {
 }
 
 class GpsStatus {
-  const GpsStatus(this.state, {this.fix, this.approximate = false});
+  const GpsStatus(
+    this.state, {
+    this.fix,
+    this.approximate = false,
+    this.integrity = LocationIntegrity.trusted,
+    this.integrityReason = '',
+    this.rawFix,
+  });
 
   final GpsState state;
   final GeoData? fix;
+  final LocationIntegrity integrity;
+  final String integrityReason;
+  final Fix? rawFix;
 
   /// The user granted approximate location only, so fixes stay coarse.
   final bool approximate;
@@ -37,6 +49,8 @@ class GpsStatus {
 
 /// Provides live fixes and says why when there are none.
 class LocationService {
+  final motion = MotionEvidence();
+  late final _integrity = LocationIntegrityMonitor(motion);
   LatLngLite? _geocodedAt;
   String _place = '';
   String _full = '';
@@ -48,6 +62,7 @@ class LocationService {
   String _iso = '';
   Fix? _lastAccepted;
   Fix? _lastEstimate;
+  Fix? _estimateRaw;
   bool _geocoding = false;
 
   static const acquireTimeout = Duration(seconds: 20);
@@ -63,10 +78,22 @@ class LocationService {
     Timer? acquiring;
     var run = 0;
     var approximate = false;
+    var check = const IntegrityCheck(LocationIntegrity.trusted, false);
+    Fix? rawFix;
+    var revision = 0;
 
     void emit(GpsState state, [GeoData? fix]) {
       if (!out.isClosed) {
-        out.add(GpsStatus(state, fix: fix, approximate: approximate));
+        out.add(
+          GpsStatus(
+            state,
+            fix: fix,
+            approximate: approximate,
+            integrity: check.state,
+            integrityReason: check.reason,
+            rawFix: rawFix,
+          ),
+        );
       }
     }
 
@@ -99,21 +126,55 @@ class LocationService {
         });
         // A fresh filter per run: a restart may follow a long pause.
         final filter = PositionFilter();
+        final integrity = _integrity;
+        _lastAccepted = null;
+        _lastEstimate = null;
+        _estimateRaw = null;
         positions = NativeLocation.positions().listen(
           (position) {
             final now = DateTime.now();
-            if (!current() || !acceptsFix(position, _lastAccepted, now)) {
+            if (!current()) return;
+            final sample = ++revision;
+            rawFix = position;
+            check = integrity.check(position, _lastAccepted, now);
+            if (!check.useFix) {
+              emit(
+                GpsState.fix,
+                _lastEstimate == null ? null : _toGeo(_lastEstimate!),
+              );
               return;
             }
+            if (position.isMock || _lastAccepted?.isMock == true) {
+              filter.reset();
+            }
             _lastAccepted = position;
-            if (!filter.update(position).used) return;
+            final result = filter.update(position);
+            if (!result.used) {
+              check = IntegrityCheck(
+                check.state == LocationIntegrity.trusted
+                    ? LocationIntegrity.lowAccuracy
+                    : check.state,
+                false,
+                result == FilterResult.rejectedAccuracy
+                    ? 'Weak GPS signal'
+                    : 'GPS outlier rejected',
+              );
+              emit(
+                GpsState.fix,
+                _lastEstimate == null ? null : _toGeo(_lastEstimate!),
+              );
+              return;
+            }
             final estimate = filter.estimate!;
             acquiring?.cancel();
             _lastEstimate = estimate;
+            _estimateRaw = position;
             // Publish the position now. The address follows when resolved.
             emit(GpsState.fix, _toGeo(estimate));
             _resolveAddress(estimate, () {
-              if (current() && identical(estimate, _lastEstimate)) {
+              if (current() &&
+                  sample == revision &&
+                  identical(estimate, _lastEstimate)) {
                 emit(GpsState.fix, _toGeo(estimate));
               }
             });
@@ -163,6 +224,9 @@ class LocationService {
 
   static bool acceptsFix(Fix fix, Fix? previous, DateTime now) {
     if (!GeoData.isFreshFix(fix.timestamp, now) ||
+        (fix.ageAtReceipt != null &&
+            (fix.ageAtReceipt!.isNegative ||
+                fix.ageAtReceipt! >= GeoData.fixLifetime)) ||
         !fix.latitude.isFinite ||
         fix.latitude.abs() > 90 ||
         !fix.longitude.isFinite ||
@@ -174,8 +238,7 @@ class LocationService {
     if (previous == null || !GeoData.isFreshFix(previous.timestamp, now)) {
       return true;
     }
-    final seconds =
-        fix.timestamp.difference(previous.timestamp).inMilliseconds / 1000;
+    final seconds = fix.secondsSince(previous);
     if (seconds <= 0) return false;
     // A clearly more accurate fix is trusted over a rough one (e.g. a cell
     // tower guess), or one bad first fix would lock out every good one.
@@ -211,9 +274,9 @@ class LocationService {
     return GeoData(
       lat: p.latitude,
       lon: p.longitude,
-      altitude: p.altitude,
+      altitude: p.altitude.isFinite ? p.altitude : 0,
       accuracy: p.accuracy,
-      heading: p.heading < 0 ? 0 : p.heading,
+      heading: p.heading.isFinite && p.heading >= 0 ? p.heading : 0,
       speed: p.speed < 0 ? 0 : p.speed,
       // Address is left empty when it can't be resolved (the stamp then shows a
       // clear "Address unavailable" instead of masking it with coordinates).
@@ -227,6 +290,9 @@ class LocationService {
       isoCode: at(_iso),
       time: DateTime.now(),
       fixTime: p.timestamp,
+      rawLat: _estimateRaw?.latitude,
+      rawLon: _estimateRaw?.longitude,
+      rawAccuracy: _estimateRaw?.accuracy,
       magneticUt: 0,
       isLive: true,
     );

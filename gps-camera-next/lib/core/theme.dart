@@ -11,10 +11,10 @@ class AppTheme {
 
   static ThemeData dark() {
     const accent = Palette.accentMuted;
-    const panel = RoundedRectangleBorder(
+    const panel = RoundedSuperellipseBorder(
       borderRadius: BorderRadius.all(Radius.circular(Corners.lg)),
     );
-    const chip = RoundedRectangleBorder(
+    const chip = RoundedSuperellipseBorder(
       borderRadius: BorderRadius.all(Radius.circular(Corners.sm)),
     );
     final scheme = ColorScheme.fromSeed(
@@ -33,6 +33,25 @@ class AppTheme {
         surface: Palette.ink,
       ),
       splashFactory: InkRipple.splashFactory,
+      switchTheme: SwitchThemeData(
+        materialTapTargetSize: MaterialTapTargetSize.padded,
+        thumbColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? Palette.onBrand
+              : Palette.textMid,
+        ),
+        trackColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? Palette.accentYellow
+              : Palette.ink2,
+        ),
+        trackOutlineColor: WidgetStateProperty.resolveWith(
+          (states) => states.contains(WidgetState.selected)
+              ? Colors.transparent
+              : Palette.strokeSolid,
+        ),
+        overlayColor: WidgetStatePropertyAll(accent.withValues(alpha: .12)),
+      ),
       textTheme: const TextTheme(
         displaySmall: AppText.display,
         headlineSmall: AppText.h1,
@@ -41,6 +60,25 @@ class AppTheme {
         bodyMedium: AppText.body,
         labelLarge: AppText.label,
         labelSmall: AppText.caption,
+      ),
+      appBarTheme: const AppBarTheme(titleTextStyle: AppText.h1),
+      listTileTheme: const ListTileThemeData(titleTextStyle: AppText.bodyHi),
+      chipTheme: ChipThemeData(shape: chip, labelStyle: AppText.label),
+      popupMenuTheme: const PopupMenuThemeData(
+        shape: panel,
+        textStyle: AppText.bodyHi,
+      ),
+      filledButtonTheme: const FilledButtonThemeData(
+        style: ButtonStyle(
+          shape: WidgetStatePropertyAll(chip),
+          textStyle: WidgetStatePropertyAll(AppText.label),
+        ),
+      ),
+      outlinedButtonTheme: const OutlinedButtonThemeData(
+        style: ButtonStyle(
+          shape: WidgetStatePropertyAll(chip),
+          textStyle: WidgetStatePropertyAll(AppText.label),
+        ),
       ),
       dialogTheme: const DialogThemeData(shape: panel),
       textButtonTheme: const TextButtonThemeData(
@@ -52,7 +90,7 @@ class AppTheme {
       ),
       snackBarTheme: const SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(),
+        shape: chip,
         elevation: 0,
         backgroundColor: Palette.surfaceSolid,
         contentTextStyle: AppText.bodyHi,

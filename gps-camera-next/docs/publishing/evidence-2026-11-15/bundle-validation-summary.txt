@@ -1,0 +1,4 @@
+Official bundletool 1.18.3 validate
+Exit code: 0
+Validated app-release.aab; full tool output listed the base module contents.
+Output SHA256: 9cb88ce627c607595f76fc6e2f8beb1e0987164cfeb34aad5508d8c1849fd153

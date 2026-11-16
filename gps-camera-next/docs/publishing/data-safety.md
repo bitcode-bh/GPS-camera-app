@@ -1,32 +1,28 @@
-# Data safety form — prepared answers
+# Data safety — review worksheet
 
-Based on the code as of 14 Nov 2026 and Google's [Data safety definitions](https://support.google.com/googleplay/android-developer/answer/10787469).
-Re-check after the map and geocoder changes (audit B1/B2).
+Updated **15 November 2026** for the intended map-enabled production app. This supersedes the earlier prepared answers. **Not ready to submit:** ArcGIS entitlement/recipient roles/retention, device-geocoder handling and final release configuration remain unverified. Developer display name: bitcode.bh.
 
-## Overview questions
+Use Google's [current definitions](https://support.google.com/googleplay/android-developer/answer/10787469?hl=en), the actual final build and all relevant tracks/territories. Local processing is distinct from off-device collection; no developer-operated server does not mean no collection.
 
-| Question | Answer | Why |
+| Topic | Preparation | Evidence still required |
 | --- | --- | --- |
-| Does your app collect or share any of the required user data types? | **Yes** | Location leaves the device in map-tile and geocoding requests. |
-| Is all user data encrypted in transit? | **Yes** | All endpoints are HTTPS (Esri, geocoder). |
-| Do you provide a way for users to request that their data be deleted? | **Not applicable / No developer-held data** — explain in the privacy policy that the developer stores nothing; captures live in the user's gallery and app data is removed on uninstall or "Clear storage". |
+| Data collected/shared overview | Prepare **Yes** for off-device location-bearing map requests | Trace the authenticated final build and actual geocoder behavior |
+| Precise location | Prepare collected/functionality; high-zoom tiles can identify areas below 3 km² | Confirm all location-related requests, any system-service exclusion and optional/required definitions |
+| Approximate location | Also review approximate location inferred from IP and any coarse-location paths | Do not assume precise location automatically answers every approximate-location field |
+| Location shared | **Unresolved** | Service-provider exemption requires processing on the developer's behalf/instructions; otherwise disclose applicable sharing |
+| Ephemeral processing | **Not established** | App-side lack of server storage does not prove providers retain data only in memory for a real-time request |
+| Optional/required | Optional only if every user can opt out and still use the app under Google's definition | Verify all devices/regions and the actual core functionality |
+| Encryption in transit | Direct endpoints HTTPS; cleartext blocked | Confirm all personal-data flows and device-provider handling before affirming universally |
+| Photos/video/audio | No automatic upload found; local capture/playback | Review final SDKs and user-initiated sharing exception |
+| Names/phone/project text | Handled locally in settings/templates/media | These fields are accessed even though not automatically uploaded |
+| Crash diagnostics/device IDs | No app telemetry/ads/account SDK identified | Recheck final runtime and provider request processing |
+| Deletion request | Supply real privacy contact and local/provider deletion explanation | Do not select “not applicable” merely because there is no developer server |
+| Account deletion | No app account system | Reassess if accounts are added |
 
-## Data types
+## Required before submission
 
-| Data type | Collected | Shared | Ephemeral | Required / optional | Purpose |
-| --- | --- | --- | --- | --- | --- |
-| Location → **Precise location** | **Yes** | **No** if Esri and the geocoder act as your service providers (ArcGIS Location Platform contract); otherwise **Yes** | **Yes** (used only to fetch tiles and an address, not stored by you) | Optional (app works without location; stamp shows "GPS unavailable") | App functionality |
-| Location → Approximate location | Covered by precise | — | — | — | — |
-| Photos and videos | **No** | No | — | — | Captures are written to the device gallery; nothing is uploaded. Sharing is user-initiated via the Android share sheet. |
-| Audio (video soundtrack) | **No** | No | — | — | Stays in the video file on device. |
-| Personal info, financial, health, messages, contacts, calendar, app activity, web history | No | No | — | — | Not accessed. |
-| App info and performance (crash logs, diagnostics) | No | No | — | — | No crash/analytics SDK. |
-| Device or other IDs | No | No | — | — | None read. |
-
-Notes:
-- The Nominatim fallback has been removed (audit B2). Recipients of location
-  are Esri (map tiles, under your ArcGIS Location Platform account) and the
-  device's own geocoder.
-- User-chosen fields typed into the stamp (person name, phone number, project
-  title) stay on the device and in the images the user saves; they are not
-  collected.
+1. Identify recipients, purposes, location precision, request metadata and retention from the final configuration. Review Esri account terms/DPA and OEM geocoder handling.
+2. Set a monitored contact and public hosted privacy policy; make in-app text and Console answers consistent.
+3. Review actual user-directed sharing, data-type definitions, provider exceptions and audience. Do not copy another app's declaration.
+4. Confirm private backup exclusions in the merged manifest/rules; separately explain gallery backups and previously shared files.
+5. Record the final answers, rationale, approver, artifact hash and submission date. No Console form has been submitted by this work.

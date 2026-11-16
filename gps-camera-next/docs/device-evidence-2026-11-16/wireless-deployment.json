@@ -1,0 +1,21 @@
+{
+  "date": "2026-11-16",
+  "device_model": "Motorola Edge 70",
+  "serial": "ZA223MDVR8",
+  "transport": "secure wireless ADB",
+  "usb_used_for": "read-only discovery of Wi-Fi address and TLS port; no USB installation",
+  "install_command": "adb -s 192.168.1.2:43163 install -r build/app/outputs/flutter-apk/app-debug.apk",
+  "install_result": "Success",
+  "installed_package": "com.gpscamera.gps_camera_next.debug",
+  "apk_sha256": "0820dd3d47e816d32e5d2313b72446fe1ae28b024880d08a101f3f1735b5387d",
+  "version_name": "0.1.0-debug",
+  "version_code": 1,
+  "launch_result": "Status: ok; camera session started",
+  "foreground_stability_check": "not passed; activity finished and process crashed during teardown",
+  "crash": "Cannot execute operation because FlutterJNI is not attached to native.",
+  "crash_stack": "FlutterRenderer.ImageReaderSurfaceProducer.onImage -> scheduleEngineFrame -> FlutterJNI.scheduleFrame",
+  "exit_event_evidence": "wm_finish_activity app-request precedes wm_destroy_activity and am_crash; input interaction was logged immediately before finish",
+  "code_fix_applied": false,
+  "taps_sent": 0,
+  "v3_ps_preview_installed": false
+}

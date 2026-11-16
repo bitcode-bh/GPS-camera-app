@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import '../../../core/widgets/controls.dart';
+import '../../../core/design/tokens.dart';
 
 import '../../../core/widgets/pressable.dart';
 import 'camera_design.dart';
@@ -11,6 +12,7 @@ class CameraControlBar extends StatelessWidget {
   final CameraMode mode;
   final double iconTurns;
   final bool busy;
+  final bool animate;
 
   /// Thumbnail of the newest Library item, when there is one.
   final ImageProvider? lastShot;
@@ -27,6 +29,7 @@ class CameraControlBar extends StatelessWidget {
     required this.mode,
     this.iconTurns = 0,
     required this.busy,
+    this.animate = true,
     required this.lastShot,
     required this.recording,
     this.lockCameraChanges = false,
@@ -41,7 +44,9 @@ class CameraControlBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final video = mode == CameraMode.video;
     final action = busy ? null : onShutter;
-    final shutterLabel = video
+    final shutterLabel = busy
+        ? (video ? 'Processing video' : 'Capturing photo')
+        : video
         ? (recording ? 'Stop recording' : 'Start recording')
         : 'Take photo';
     final stamp = CameraAction(
@@ -56,7 +61,7 @@ class CameraControlBar extends StatelessWidget {
       enabled: action != null,
       child: Pressable(
         onTap: action,
-        scale: .94,
+        scale: 1,
         child: Container(
           width: 76,
           height: 76,
@@ -65,25 +70,32 @@ class CameraControlBar extends StatelessWidget {
             shape: BoxShape.circle,
             border: Border.all(color: Colors.white, width: 3),
           ),
-          child: busy
-              ? const SizedBox.square(
-                  dimension: 26,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: cameraYellow,
-                  ),
-                )
-              : AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  width: recording ? 28 : 62,
-                  height: recording ? 28 : 62,
-                  decoration: BoxDecoration(
-                    color: action == null
-                        ? Colors.white38
-                        : (video ? const Color(0xFFFF453A) : Colors.white),
-                    borderRadius: BorderRadius.circular(recording ? 7 : 31),
-                  ),
-                ),
+          child: SizedBox.square(
+            key: const ValueKey('camera-shutter-inner'),
+            dimension: 62,
+            child: AnimatedSwitcher(
+              duration: MediaQuery.disableAnimationsOf(context)
+                  ? Duration.zero
+                  : const Duration(milliseconds: 150),
+              child: busy || recording
+                  ? SizedBox.expand(
+                      child: CameraCaptureGrid(
+                        recording: recording,
+                        animate: animate,
+                      ),
+                    )
+                  : DecoratedBox(
+                      key: ValueKey(video),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: action == null
+                            ? Colors.white38
+                            : (video ? const Color(0xFFFF453A) : Colors.white),
+                      ),
+                      child: const SizedBox.expand(),
+                    ),
+            ),
+          ),
         ),
       ),
     );
@@ -94,7 +106,8 @@ class CameraControlBar extends StatelessWidget {
       onTap: onGallery,
       child: lastShot == null
           ? null
-          : ClipOval(
+          : ClipRSuperellipse(
+              borderRadius: BorderRadius.circular(Corners.md),
               child: Image(
                 image: lastShot!,
                 width: 48,
@@ -156,7 +169,7 @@ class CameraControlBar extends StatelessWidget {
   }
 }
 
-class _ModePicker extends StatefulWidget {
+class _ModePicker extends StatelessWidget {
   final CameraMode mode;
   final bool locked;
   final ValueChanged<CameraMode> onMode;
@@ -167,114 +180,14 @@ class _ModePicker extends StatefulWidget {
   });
 
   @override
-  State<_ModePicker> createState() => _ModePickerState();
-}
-
-class _ModePickerState extends State<_ModePicker> {
-  double? _dragPosition;
-
-  void _select(int index) {
-    setState(() => _dragPosition = null);
-    if (widget.locked || index == widget.mode.index) return;
-    HapticFeedback.selectionClick();
-    widget.onMode(CameraMode.values[index]);
-  }
-
-  @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final slot = constraints.maxWidth / CameraMode.values.length;
-      void follow(double x) =>
-          setState(() => _dragPosition = (x / slot - .5).clamp(0.0, 1.0));
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onHorizontalDragStart: widget.locked
-            ? null
-            : (d) => follow(d.localPosition.dx),
-        onHorizontalDragUpdate: widget.locked
-            ? null
-            : (d) => follow(d.localPosition.dx),
-        onHorizontalDragEnd: widget.locked
-            ? null
-            : (d) => _select(
-                (_dragPosition ?? widget.mode.index.toDouble()).round(),
-              ),
-        onHorizontalDragCancel: () => setState(() => _dragPosition = null),
-        child: Container(
-          height: 52,
-          decoration: BoxDecoration(
-            color: const Color(0xFF171717),
-            borderRadius: BorderRadius.circular(30),
-          ),
-          child: Stack(
-            children: [
-              AnimatedAlign(
-                duration:
-                    _dragPosition != null ||
-                        MediaQuery.disableAnimationsOf(context)
-                    ? Duration.zero
-                    : const Duration(milliseconds: 170),
-                curve: Curves.easeOutCubic,
-                alignment: Alignment(
-                  2 * (_dragPosition ?? widget.mode.index.toDouble()) - 1,
-                  0,
-                ),
-                child: Container(
-                  width: slot,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(28),
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFF414141), Color(0xFF252525)],
-                    ),
-                    border: Border.all(color: const Color(0x55FFFFFF)),
-                  ),
-                ),
-              ),
-              Row(
-                children: [
-                  for (final mode in CameraMode.values)
-                    Expanded(
-                      child: Semantics(
-                        label:
-                            mode.name[0].toUpperCase() + mode.name.substring(1),
-                        button: true,
-                        selected: widget.mode == mode,
-                        enabled: !widget.locked || widget.mode == mode,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: widget.locked && widget.mode != mode
-                              ? null
-                              : () => _select(mode.index),
-                          child: ExcludeSemantics(
-                            child: SizedBox(
-                              height: 52,
-                              child: Center(
-                                child: Text(
-                                  mode.name.toUpperCase(),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                    letterSpacing: .4,
-                                    color: widget.mode == mode
-                                        ? cameraYellow
-                                        : Colors.white70,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      );
-    },
+  Widget build(BuildContext context) => GlassSegmented<CameraMode>(
+    options: const [
+      (value: CameraMode.video, label: 'Video'),
+      (value: CameraMode.photo, label: 'Photo'),
+    ],
+    selected: mode,
+    enabled: !locked,
+    height: 54,
+    onChanged: onMode,
   );
 }

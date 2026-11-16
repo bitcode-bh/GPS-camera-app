@@ -55,6 +55,7 @@ class CaptureService {
     String? sourcePath,
     double? latitude,
     double? longitude,
+    String? locationDescription,
     int quarterTurns = 0,
   }) async {
     try {
@@ -63,6 +64,7 @@ class CaptureService {
         'sourcePath': sourcePath,
         'latitude': latitude,
         'longitude': longitude,
+        'locationDescription': locationDescription,
         'quarterTurns': quarterTurns,
       });
     } catch (_) {
@@ -93,12 +95,14 @@ class CaptureService {
     required DateTime taken,
     double? latitude,
     double? longitude,
+    String? locationDescription,
   }) async {
     try {
       final bytes = await setPhotoLocation(
         await File(path).readAsBytes(),
         latitude: latitude,
         longitude: longitude,
+        locationDescription: locationDescription,
       );
       if (bytes == null) return null;
       return await saveImageToGallery(

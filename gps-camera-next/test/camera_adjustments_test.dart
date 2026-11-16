@@ -10,6 +10,7 @@ import 'package:gps_camera_next/screens/camera/camera_screen.dart';
 import 'package:gps_camera_next/screens/camera/widgets/camera_design.dart';
 import 'package:gps_camera_next/screens/camera/widgets/camera_layer.dart';
 import 'package:gps_camera_next/screens/library/library_screen.dart';
+import 'package:gps_camera_next/services/camera_adjustments.dart';
 import 'package:gps_camera_next/widgets/geo_stamp.dart';
 
 class _Camera extends CameraPlatform {
@@ -22,6 +23,8 @@ class _Camera extends CameraPlatform {
   int focusCalls = 0;
   final lenses = <CameraLensDirection>[];
   int sessions = 0;
+  int disposeCalls = 0;
+  Completer<void>? disposeGate;
 
   @override
   Future<List<CameraDescription>> availableCameras() async => const [
@@ -127,10 +130,29 @@ class _Camera extends CameraPlatform {
   Widget buildPreview(int cameraId) => const ColoredBox(color: Colors.blueGrey);
 
   @override
-  Future<void> dispose(int cameraId) async {}
+  Future<void> dispose(int cameraId) async {
+    disposeCalls++;
+    await disposeGate?.future;
+  }
+}
+
+// Pixel motion continues while controls are visible; only settle UI transitions.
+Future<void> pumpControls(WidgetTester tester) async {
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds: 500));
+  await tester.pump();
 }
 
 void main() {
+  test('zoom presets respect lens limits and wrap after continuous zoom', () {
+    expect(CameraAdjustments.nextZoomPreset(1, .5, 5), 2);
+    expect(CameraAdjustments.nextZoomPreset(4.8, .5, 5), .5);
+    expect(CameraAdjustments.nextZoomPreset(1, 1, 1.8), 1);
+    expect(CameraAdjustments.nextZoomPreset(1, 1, 2), 2);
+    expect(CameraAdjustments.nextZoomPreset(1.5, 1, 2), 2);
+    expect(CameraAdjustments.nextZoomPreset(2, 1, 2), 1);
+  });
+
   for (final size in [
     const Size(320, 568),
     const Size(390, 844),
@@ -205,12 +227,21 @@ void main() {
         addTearDown(() => messenger.setMockMethodCallHandler(library, null));
 
         await tester.pumpWidget(const MaterialApp(home: CameraScreen()));
-        await tester.pumpAndSettle();
+        await pumpControls(tester);
         final controls = find.byType(CameraAdjustmentRail);
         expect(controls, findsNothing);
         Finder control(String label) => find.bySemanticsLabel(RegExp(label));
         final topBar = tester.getRect(control(r'^White balance,'));
         final finder = tester.getRect(find.byType(CameraLayer));
+        final shutter = tester.getRect(control(r'^Take photo$'));
+        final gallery = tester.getRect(control(r'^Open gallery$'));
+        double adjustmentOpacity() => tester
+            .widget<AnimatedOpacity>(
+              find.byKey(const ValueKey('camera-adjustment-controls')),
+            )
+            .opacity;
+        expect(adjustmentOpacity(), 0);
+        expect(control(r'^Show zoom adjustment$'), findsNothing);
         expect(topBar.bottom, lessThan(finder.top));
         final evHint = find.byKey(const ValueKey('camera-EV-hint'));
         final zoomHint = find.byKey(const ValueKey('camera-Zoom-hint'));
@@ -234,7 +265,7 @@ void main() {
               (_) {},
             );
           }
-          await tester.pumpAndSettle();
+          await pumpControls(tester);
         }
 
         await rotate(9.8, 0);
@@ -251,14 +282,34 @@ void main() {
         expect(tester.widget<AnimatedRotation>(wbIcon).turns, 0);
         expect(
           tester.getRect(find.byType(GeoStamp)).bottom,
-          closeTo(finder.bottom - 14, .1),
+          closeTo(finder.bottom - 6, .1),
         );
         await tester.tapAt(finder.center);
         await tester.pump(kDoubleTapTimeout);
         expect(camera.focus, isNotNull);
         expect(zoomHint, findsOneWidget);
+        expect(adjustmentOpacity(), 1);
+        await tester.pump(const Duration(seconds: 3));
+        await tester.pump(const Duration(milliseconds: 220));
+        expect(adjustmentOpacity(), 0);
+        expect(controls, findsNothing);
+        expect(tester.getRect(find.byType(CameraLayer)), finder);
+        expect(tester.getRect(control(r'^Take photo$')), shutter);
+        expect(tester.getRect(control(r'^Open gallery$')), gallery);
+        await tester.tapAt(finder.center);
+        await tester.pump(kDoubleTapTimeout);
+        await tester.pump(const Duration(milliseconds: 220));
+        expect(adjustmentOpacity(), 1);
 
         expect(control(r'^Zoom 1×$'), findsOneWidget);
+        for (final next in [2.0, .5, 1.0]) {
+          await tester.tap(control(r'^Zoom [0-9].*×$'));
+          await pumpControls(tester);
+          expect(camera.zooms.last, next);
+          expect(control('^Zoom ${formatCameraZoom(next)}\$'), findsOneWidget);
+        }
+        await tester.pump(const Duration(milliseconds: 850));
+        await pumpControls(tester);
         final zoomGrip = tester.getCenter(zoomHint);
         await tester.tapAt(zoomGrip);
         await tester.pump(kDoubleTapTimeout);
@@ -269,17 +320,17 @@ void main() {
           tester.getCenter(find.byType(Slider)) - const Offset(0, 20),
         );
         await tester.pump(kDoubleTapTimeout);
-        await tester.pumpAndSettle();
+        await pumpControls(tester);
         expect(camera.zooms.last, greaterThan(1));
 
         await tester.tap(control('^Exposure 0.0 EV'));
-        await tester.pumpAndSettle();
+        await pumpControls(tester);
         expect(controls, findsOneWidget);
         await tester.tapAt(
           tester.getCenter(find.byType(Slider)) - const Offset(0, 20),
         );
         await tester.pump(kDoubleTapTimeout);
-        await tester.pumpAndSettle();
+        await pumpControls(tester);
         expect(camera.exposures.last, greaterThan(0));
         expect(camera.exposures.last % .5, 0);
         expect(
@@ -297,7 +348,7 @@ void main() {
         final evButton = control(r'^Exposure [-0-9]');
         final evButtonPosition = tester.getCenter(evButton);
         await tester.tap(wbButton);
-        await tester.pumpAndSettle();
+        await pumpControls(tester);
         expect(control(r'^White balance, Auto$'), findsOneWidget);
         expect(tester.getCenter(evButton), evButtonPosition);
         expect(find.text('2500–9000 K'), findsOneWidget);
@@ -321,18 +372,25 @@ void main() {
         expect(tester.widget<AnimatedOpacity>(wbReadout).opacity, 1);
 
         await tester.tap(evButton);
-        await tester.pumpAndSettle();
+        await pumpControls(tester);
         expect(tester.widget<CameraAdjustmentRail>(controls).exposure, isTrue);
         await tester.tap(wbButton);
-        await tester.pumpAndSettle();
+        await pumpControls(tester);
         expect(wb, [adjustedKelvin]);
 
         // AE can be locked even when EV compensation has already been set.
         await tester.longPressAt(finder.center);
-        await tester.pumpAndSettle();
+        await pumpControls(tester);
         expect(camera.exposureModes.last, ExposureMode.locked);
+        final notice = find.byKey(const ValueKey('camera-notification'));
+        expect(
+          tester.getRect(notice).bottom,
+          lessThanOrEqualTo(tester.getRect(find.byType(GeoStamp)).top),
+        );
+        expect(tester.getRect(control(r'^Take photo$')), shutter);
+        expect(tester.getRect(control(r'^Open gallery$')), gallery);
         await tester.tap(wbButton);
-        await tester.pumpAndSettle();
+        await pumpControls(tester);
         final railCenter = tester.getCenter(find.byType(Slider));
         await tester.tapAt(railCenter);
         await tester.pump(const Duration(milliseconds: 80));
@@ -348,9 +406,9 @@ void main() {
 
         await rotate(9.8, 0);
         await tester.tap(wbButton);
-        await tester.pumpAndSettle();
+        await pumpControls(tester);
         await tester.tap(wbButton);
-        await tester.pumpAndSettle();
+        await pumpControls(tester);
         await tester.dragFrom(
           Offset(finder.center.dx, finder.top + 26),
           const Offset(54, 0),
@@ -361,7 +419,7 @@ void main() {
         await rotate(0, 9.8);
 
         await tester.tap(evButton);
-        await tester.pumpAndSettle();
+        await pumpControls(tester);
         await tester.tapAt(finder.center);
         await tester.pump(kDoubleTapTimeout);
         await tester.pump(const Duration(milliseconds: 220));
@@ -435,7 +493,7 @@ void main() {
         await rotate(9.8, 0);
         expect(
           tester.getRect(find.byType(GeoStamp)).left,
-          closeTo(finder.left + 14, .1),
+          closeTo(finder.left + 6, .1),
         );
         final landscapeZoom = camera.zooms.last;
         final landscapeEv = camera.exposures.last;
@@ -460,7 +518,7 @@ void main() {
         await rotate(-9.8, 0);
         expect(
           tester.getRect(find.byType(GeoStamp)).right,
-          closeTo(finder.right - 14, .1),
+          closeTo(finder.right - 6, .1),
         );
         final oppositeZoom = camera.zooms.last;
         final oppositeEv = camera.exposures.last;
@@ -512,7 +570,7 @@ void main() {
         await rotate(0, -9.8);
         expect(
           tester.getRect(find.byType(GeoStamp)).top,
-          closeTo(finder.top + 14, .1),
+          closeTo(finder.top + 6, .1),
         );
         await rotate(0, 9.8);
         await tester.tapAt(right);
@@ -529,52 +587,76 @@ void main() {
         expect(tester.getRect(timer).bottom, lessThan(finder.top));
         expect(tester.getRect(ratio).bottom, lessThan(finder.top));
         await tester.tap(timer);
-        await tester.pumpAndSettle();
+        await pumpControls(tester);
         expect(control(r'^Timer, 3s$'), findsOneWidget);
         await tester.tap(control(r'^Timer, 3s$'));
-        await tester.pumpAndSettle();
+        await pumpControls(tester);
         expect(control(r'^Timer, 10s$'), findsOneWidget);
         await tester.tap(control(r'^Timer, 10s$'));
-        await tester.pumpAndSettle();
+        await pumpControls(tester);
         expect(timer, findsOneWidget);
         const ratios = ['4:3', '16:9', '1:1', 'Full'];
         for (final value in ratios) {
           final action = control('^Aspect ratio, $value\$');
           expect(action, findsOneWidget);
           await tester.tap(action);
-          await tester.pumpAndSettle();
+          await pumpControls(tester);
         }
         expect(control(r'^Aspect ratio, 4:3$'), findsOneWidget);
 
         await tester.tap(control('^Flash off'));
-        await tester.pumpAndSettle();
+        await pumpControls(tester);
         expect(camera.flashes.last, FlashMode.auto);
         await tester.tap(control('^Video'));
-        await tester.pumpAndSettle();
+        await pumpControls(tester);
         expect(camera.sessions, 1);
         expect(tester.getRect(control(r'^White balance,')), topBar);
         expect(camera.flashes.last, FlashMode.off);
         await tester.tap(control('^Torch off'));
-        await tester.pumpAndSettle();
+        await pumpControls(tester);
         expect(camera.flashes.last, FlashMode.torch);
         // The Library covers the camera, which is released until it closes.
         await tester.tap(control('^Open video library'));
-        await tester.pumpAndSettle();
+        await pumpControls(tester);
         expect(find.byType(LibraryScreen), findsOneWidget);
         expect(control(r'^Video, 0:04'), findsOneWidget);
         await tester.tap(find.byTooltip('Back to camera'));
-        await tester.pumpAndSettle();
+        await pumpControls(tester);
         expect(find.byType(LibraryScreen), findsNothing);
         expect(camera.sessions, 2);
         expect(control('^Start recording'), findsOneWidget);
         expect(control(r'^Pro$'), findsNothing);
         await tester.tap(control('^Switch camera'));
-        await tester.pumpAndSettle();
+        await pumpControls(tester);
         expect(camera.lenses, [
           CameraLensDirection.back,
           CameraLensDirection.back, // Reopened after the Library closed.
           CameraLensDirection.front,
         ]);
+        // Back must release native preview surfaces before Android destroys
+        // the engine; a second Back while release is pending cannot exit early.
+        var systemPops = 0;
+        messenger.setMockMethodCallHandler(SystemChannels.platform, (
+          call,
+        ) async {
+          if (call.method == 'SystemNavigator.pop') systemPops++;
+          return null;
+        });
+        addTearDown(
+          () =>
+              messenger.setMockMethodCallHandler(SystemChannels.platform, null),
+        );
+        camera.disposeGate = Completer<void>();
+        final releases = camera.disposeCalls;
+        await tester.binding.handlePopRoute();
+        await pumpControls(tester);
+        await tester.binding.handlePopRoute();
+        await pumpControls(tester);
+        expect(camera.disposeCalls, releases + 1);
+        expect(systemPops, 0);
+        camera.disposeGate!.complete();
+        await pumpControls(tester);
+        expect(systemPops, 1);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pump();

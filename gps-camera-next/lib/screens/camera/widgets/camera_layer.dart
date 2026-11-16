@@ -1,7 +1,7 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
-import '../../../core/design/palette.dart';
+import '../../../widgets/pinshutter_brand.dart';
 
 /// Shows the live camera preview (cover-fitted, portrait-corrected). When no
 /// camera is available (simulator / web / permission denied) it falls back to a
@@ -38,16 +38,7 @@ class FallbackScene extends StatelessWidget {
   Widget build(BuildContext context) {
     return const ColoredBox(
       color: Colors.black,
-      child: Center(
-        child: SizedBox(
-          width: 24,
-          height: 24,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            valueColor: AlwaysStoppedAnimation(Palette.accentMuted),
-          ),
-        ),
-      ),
+      child: Center(child: PinShutterLoading()),
     );
   }
 }

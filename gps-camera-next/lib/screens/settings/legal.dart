@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../core/design/palette.dart';
 import '../../core/design/text_styles.dart';
@@ -8,6 +11,8 @@ import '../../services/native.dart';
 /// The published privacy policy. Set at build time:
 /// `--dart-define=PRIVACY_POLICY_URL=https://example.com/privacy`
 const privacyPolicyUrl = String.fromEnvironment('PRIVACY_POLICY_URL');
+const privacyContactEmail = String.fromEnvironment('PRIVACY_CONTACT_EMAIL');
+const developerDisplayName = 'bitcode.bh';
 
 const mapAccuracyNotice =
     'Maps, addresses and coordinates come from GPS signals and third-party '
@@ -31,26 +36,19 @@ void _addNativeLicences() {
   if (_nativeLicencesAdded) return;
   _nativeLicencesAdded = true;
   LicenseRegistry.addLicense(() async* {
-    yield const LicenseEntryWithLineBreaks([
-      'AndroidX CameraX',
-      'AndroidX Media3 (ExoPlayer, Transformer, Effect)',
-      'AndroidX ExifInterface',
-      'AndroidX libraries',
-      'Kotlin standard library',
-    ], _apacheNotice);
+    final rows =
+        jsonDecode(
+              await rootBundle.loadString('assets/legal/android-notices.json'),
+            )
+            as List;
+    for (final row in rows.cast<Map<String, dynamic>>()) {
+      yield LicenseEntryWithLineBreaks(
+        (row['packages'] as List).cast<String>(),
+        row['text'] as String,
+      );
+    }
   });
 }
-
-const _apacheNotice =
-    'Licensed under the Apache License, Version 2.0 (the "License"); you may '
-    'not use these files except in compliance with the License. You may '
-    'obtain a copy of the License at\n\n'
-    'http://www.apache.org/licenses/LICENSE-2.0\n\n'
-    'Unless required by applicable law or agreed to in writing, software '
-    'distributed under the License is distributed on an "AS IS" BASIS, '
-    'WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. '
-    'See the License for the specific language governing permissions and '
-    'limitations under the License.';
 
 Future<void> showOpenSourceLicences(BuildContext context) async {
   _addNativeLicences();
@@ -58,7 +56,7 @@ Future<void> showOpenSourceLicences(BuildContext context) async {
   if (!context.mounted) return;
   showLicensePage(
     context: context,
-    applicationName: 'GPS Camera Next',
+    applicationName: 'PinShutter',
     applicationVersion: version,
     applicationLegalese:
         'Maps powered by Esri; map data © Esri and its data providers.',
@@ -76,10 +74,11 @@ class PrivacyScreen extends StatelessWidget {
 
   static const _sections = <(String, String)>[
     (
-      'What stays on your phone',
+      'Captures and details',
       'Photos, videos and their sound are saved to your gallery. The app has '
-          'no account, no cloud upload, no ads and no analytics. Text you type '
-          'into the stamp stays on the device.',
+          'no account, no automatic media upload, no ads and no analytics. '
+          'Stamp details and preferences are stored in app-private files. '
+          'Your gallery or backup apps may separately back up saved captures.',
     ),
     (
       'Location',
@@ -87,7 +86,11 @@ class PrivacyScreen extends StatelessWidget {
           'small map to your captures, and to place them on the Library map. '
           'To draw maps, the area you are viewing is sent to our map provider '
           '(Esri). To look up the address, coordinates are sent to your '
-          'phone\'s geocoding service. We do not store or sell your location.',
+          'phone\'s geocoding service. These requests can reveal precise '
+          'location and include network information such as your IP address. '
+          'Capture coordinates, addresses and accuracy/integrity details are '
+          'stored in the local library index. We do not operate a server '
+          'that collects your captures or location, and do not sell location.',
     ),
     (
       'Sharing',
@@ -98,10 +101,21 @@ class PrivacyScreen extends StatelessWidget {
     (
       'Your choices',
       'Turn location off in Android settings at any time; the app keeps '
-          'working. Turn off "Embed GPS in photo metadata" to keep coordinates '
-          'out of saved files. Uninstalling or clearing the app\'s storage '
+          'working. "Embed GPS in photo metadata" controls EXIF only. Turning '
+          'it off does not remove coordinates, addresses or maps printed in '
+          'the visible stamp, or the local library index. Review stamp fields '
+          'before sharing. Uninstalling or clearing the app\'s storage '
           'removes its settings and location index; your gallery files stay '
           'until you delete them.',
+    ),
+    (
+      'Backups and retention',
+      'The app excludes its private settings, stamp details and location index '
+          'from Android cloud backup and device transfer. These local files '
+          'remain until you delete the relevant entry, clear app storage or '
+          'uninstall. This does not delete gallery copies, previous backups '
+          'or files you shared. Map and geocoding providers have separate '
+          'retention and privacy terms.',
     ),
   ];
 
@@ -116,6 +130,8 @@ class PrivacyScreen extends StatelessWidget {
     body: ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
       children: [
+        Text('Developer: $developerDisplayName', style: AppText.bodyHi),
+        const SizedBox(height: 20),
         for (final (title, body) in _sections) ...[
           Text(title, style: AppText.bodyHi.copyWith(color: Colors.white)),
           const SizedBox(height: 6),
@@ -135,10 +151,37 @@ class PrivacyScreen extends StatelessWidget {
             style: AppText.bodyHi.copyWith(color: Colors.white),
           ),
           const SizedBox(height: 6),
+          TextButton.icon(
+            icon: const Icon(Icons.open_in_new),
+            label: const Text('Read the full privacy policy'),
+            onPressed: () async {
+              var opened = false;
+              try {
+                opened = await Native.openWebPage(privacyPolicyUrl);
+              } catch (_) {
+                // Keep the address available if no browser can handle it.
+              }
+              if (!opened && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Could not open the browser. Copy the policy address below.',
+                    ),
+                  ),
+                );
+              }
+            },
+          ),
           SelectableText(
             privacyPolicyUrl,
             style: AppText.body.copyWith(color: Palette.teal),
           ),
+        ],
+        if (privacyContactEmail.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          Text('Privacy contact', style: AppText.bodyHi),
+          const SizedBox(height: 6),
+          SelectableText(privacyContactEmail, style: AppText.body),
         ],
       ],
     ),

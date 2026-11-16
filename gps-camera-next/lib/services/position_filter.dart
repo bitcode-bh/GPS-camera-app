@@ -78,7 +78,7 @@ class PositionFilter {
     final last = _last;
     if (!ready || last == null) return _seed(fix, accuracy);
 
-    final dt = at.difference(last.timestamp).inMilliseconds / 1000;
+    final dt = fix.secondsSince(last);
     if (dt <= 0) return FilterResult.rejectedOutlier;
     final starved = at.difference(_lastUsedAt ?? at) > starvedAfter;
     if (accuracy > maxUsableAccuracy && !starved) {
@@ -144,6 +144,9 @@ class PositionFilter {
       speed: last.speed >= 0 && last.speed < driftSpeed ? 0 : last.speed,
       heading: last.heading,
       timestamp: last.timestamp,
+      isMock: last.isMock,
+      elapsedRealtimeNanos: last.elapsedRealtimeNanos,
+      ageAtReceipt: last.ageAtReceipt,
     );
   }
 

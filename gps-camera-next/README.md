@@ -1,9 +1,12 @@
-# GPS Camera Next
+# PinShutter
 
-GPS Camera Next is a standalone Flutter field camera. The Android app ID is
+PinShutter (formerly GPS Camera Next) is a standalone Flutter field camera by
+**bitcode.bh**. Approved Play Store title: **PinShutter: GPS Camera**.
+The Android app ID is
 `com.gpscamera.gps_camera_next`, the iOS bundle ID is
 `com.gpscamera.gpsCameraNext`, and Android exports go to the **GPS Camera Next**
-album. Each app has its own preferences and private storage.
+album to preserve access to existing captures. Each app has its own preferences
+and private storage. The Dart package and platform identifiers remain unchanged.
 
 ## Build and install
 
@@ -14,15 +17,17 @@ Android SDK. Run these commands from this directory.
 flutter pub get
 flutter analyze
 flutter test
-flutter build apk --release --target-platform android-arm64
-adb install -r build/app/outputs/flutter-apk/app-release.apk
+flutter build apk --debug --target-platform android-arm64
+adb install -r build/app/outputs/flutter-apk/app-debug.apk
 ```
 
-The release build uses the debug key for local installation when this project's
-`android/key.properties` is absent. Configure an independent production
-keystore before distribution. Distribution signing enables R8 and resource
-shrinking. The Android build downloads Google Maven
-dependencies for Media3 Transformer.
+Release builds require owner-managed signing, published policy/contact and
+authorized map configuration; missing upload credentials block the build.
+Release always enables R8/resource shrinking. Follow the
+[release configuration instructions](/Volumes/Bitcode/GitHub/GPS-camera-app/gps-camera-next/config/README.md).
+Trademark/domain clearance and the remaining owner/service gates are still
+pending; name approval does not establish legal clearance. The Android build
+downloads Google Maven dependencies for Media3 Transformer.
 
 Android is the implementation and validation target. An iOS project with its
 own identity is included. Its native Pro backend and media compositor still

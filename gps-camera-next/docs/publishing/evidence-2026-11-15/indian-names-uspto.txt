@@ -1,0 +1,112 @@
+Browser tab: 5, Title: "Trademark search", URL: "https://tmsearch.uspto.gov/search/search-results".
+0 AXWebArea Trademark search, URL: tmsearch.uspto.gov/search/search-results
+	1 container
+		2 container global-header
+			3 container Official government website
+				4 image U.S. flag
+				5 text An official website of the United States government
+				6 button (collapsed) Here’s how you know keyboard_arrow_down, Secondary Actions: Expand
+					7 text Here’s how you know 
+					8 text keyboard_arrow_down
+			9 container
+				10 link Description: United States Patent and Trademark Office, Help: United States Patent and Trademark Office - An Agency of the Department of Commerce, Value: uspto.gov/
+				11 pop up button (collapsed) Description: Patents, Secondary Actions: Expand
+					12 text Patents 
+				13 pop up button (collapsed) Description: Trademarks, Secondary Actions: Expand
+					14 text Trademarks 
+				15 pop up button (collapsed) Description: Fees and payment, Secondary Actions: Expand
+					16 text Fees and payment 
+				17 pop up button (collapsed) Description: Contact Us, Secondary Actions: Expand
+					18 text Contact Us 
+				19 link Description: MyUSPTO, Value: my.uspto.gov/
+				20 button Sign in
+					21 text Sign in
+			22 link Description: Trademark search, Value: tmsearch.uspto.gov/#
+			23 container header sub navigation
+				24 container breadcrumb
+					25 content list
+						81 link Description: Home, Value: tmsearch.uspto.gov/search
+						82 container
+							83 text >  Search results
+				27 button Help
+		84 container
+			85 container Description: Choose the new search experience, ID: experienceLabel
+				86 text Try 
+				87 link Description: our new beta feature , Value: uspto.gov/trademarks/search/trademark-search-system-updates
+				88 text to see more info when you open results
+			89 switch (settable, boolean) Description: Toggle new search experience, Value: 1, ID: experience
+			90 container Description: Choose the new search experience, ID: experienceLabel
+				91 text  On
+		28 container
+			29 combo box (collapsed) Description: Search refinment, Value: Field tag and Search builder, ID: mat-select-0, Secondary Actions: Expand
+				30 container
+					31 text Field tag and Search builder
+			32 combo box (collapsed, settable) Description: Search trademarks The search builder button follows the Search button, Value: CM:(DIKCHHAVI OR BHUVANKIT OR STHANVYA OR DIKCHAVI OR BHUVANKITH OR STHANVIA), ID: searchbar, Secondary Actions: Expand
+			92 text clear
+			33 button search
+				34 text search
+			93 button collapsed Search builder
+				94 text chevron_right
+				95 text Search builder
+		120 container sidebarAccordion
+			121 heading Sort, Value: 2, ID: headingSort
+				122 button (collapsed) Sort, Secondary Actions: Expand
+			123 heading Configure, Value: 2, ID: headingConfigure
+				124 button (expanded) Configure, Secondary Actions: Collapse
+			125 container Description: Configure, ID: collapseConfigure
+				126 content list
+					127 container
+						128 checkbox (settable, integer) Description: Show image, Value: 1, ID: showImage
+						129 text Show image
+					130 button Reset
+		131 container
+			132 button View grid
+			133 button View list
+			134 button View compact list
+			135 container
+				136 combo box (collapsed) Export, ID: mat-select-2, Secondary Actions: Expand
+					137 container
+						138 text Export
+		139 text No results found
+		43 container modern-footer
+			44 container modern-footer-top
+				45 container
+					46 text Receive updates from the USPTO
+					47 text Enter your email to subscribe or update your preferences
+					48 container
+						49 text field (settable) Enter your email to subscribe or update your preferences
+						50 button Subscribe
+				51 container
+					52 link Description: About the USPTO, Value: uspto.gov/about-us
+					116 text  • 
+					54 link Description: Search for patents, Value: uspto.gov/patents/search
+					117 text  • 
+					56 link Description: Search for trademarks, Value: uspto.gov/trademarks/search
+					57 link Description: US Department of Commerce, Value: commerce.gov/
+					58 link Description: Accessibility, Value: uspto.gov/using-usptogov/accessibility-uspto-website
+					59 link Description: Privacy Policy, Value: uspto.gov/privacy-policy
+					60 link Description: Terms of Use, Value: uspto.gov/terms-use-uspto-websites
+					61 link Description: Financial and Performance Data, Value: uspto.gov/about-us/financial-and-performance
+					62 link Description: Freedom of Information Act, Value: uspto.gov/learning-and-resources/ip-policy/electronic-freedom-information-act-e-foia
+					63 link Description: Inspector General, Value: oig.doc.gov/Pages/U.S.-Patent-and-Trademark-Office.aspx
+					64 link Description: NoFEAR Act, Value: uspto.gov/about-us/organizational-offices/office-equal-employment-opportunity-and-diversity/nofear-act
+					65 link Description: USA.gov, Value: usa.gov/
+			66 container modern-footer-bottom
+				67 link Value: uspto.gov/, Description: United States Patent and Trademark Office - An Agency of the Department of Commerce USPTO - United States Patent and Trademark Office
+				68 container
+					69 text Follow us
+					70 link Description: Facebook USPTO Facebook page, Value: facebook.com/uspto.gov
+					71 link Description: Instagram USPTO Instagram page, Value: instagram.com/uspto
+					72 link Description: Linkedin USPTO Linkedin page, Value: linkedin.com/company/uspto
+					73 link Description: X USPTO X page, Value: twitter.com/uspto
+					74 link Description: Youtube USPTO Youtube page, Value: youtube.com/user/USPTOvideo
+		75 button Virtual Assistant avatar Need help? Ask the USPTO Virtual Assistant!, ID: chatButtonDesktop
+			76 container
+				77 image Virtual Assistant avatar
+				78 container
+					79 text Need help? Ask the
+					80 text USPTO  Virtual Assistant!
+		118 button Feedback, ID: QSIFeedbackButton-btn
+			119 text Feedback
+
+The focused UI element is 33 button search

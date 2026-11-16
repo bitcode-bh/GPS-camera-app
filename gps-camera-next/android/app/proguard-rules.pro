@@ -1,4 +1,4 @@
-# ── GPS Camera Next — R8/ProGuard keep rules ──────────────────────────────────
+# ── PinShutter — R8/ProGuard keep rules ───────────────────────────────────────
 # Flutter's Gradle plugin already supplies engine keep rules; these are
 # defensive keeps for code reached via the platform method/event channels and
 # JNI, which R8 can't see through static analysis.

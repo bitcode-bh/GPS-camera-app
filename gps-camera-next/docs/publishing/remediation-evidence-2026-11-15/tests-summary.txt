@@ -1,0 +1,2 @@
+flutter test: exit 0; 155 tests passed.
+python3 -m unittest discover -s tools: exit 0; 2 tests passed.

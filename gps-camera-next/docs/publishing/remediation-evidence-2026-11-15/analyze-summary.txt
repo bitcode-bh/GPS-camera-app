@@ -1,0 +1,1 @@
+flutter analyze: exit 0; No issues found; 5.3 seconds.

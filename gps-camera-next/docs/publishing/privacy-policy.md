@@ -1,82 +1,60 @@
-# Privacy Policy — [App name]
+# Privacy policy — PinShutter
 
-*Draft. Replace the bracketed fields, have it reviewed, then publish at a
-public, non-PDF URL and link it from Play Console and from Settings → About.*
+**Release draft, updated 15 November 2026.** The owner approved the PinShutter name. Trademark/domain clearance remains pending. Do not publish with unfinished contact fields or before confirming provider terms.
 
-Effective date: [date]
-Developer: [legal name of developer / company], [postal address]
-Contact: [privacy email address]
+Developer display name: **bitcode.bh**
+Effective date: [set when published]
+Privacy contact: [owner must provide a monitored email]
+Public policy URL: [owner must provide a hosted HTTPS page]
 
-## Summary
+## What the app does
 
-[App name] is a camera that adds the time, your location and a small map to
-the photos and videos you take. Your photos and videos stay on your device. We
-do not run servers that receive your data, we do not use advertising or
-analytics SDKs, and we do not sell personal data.
+PinShutter captures photos and videos and can add time, coordinates, addresses, maps and user-entered stamp details. There is no app account, advertising SDK, analytics SDK or automatic upload of captures to a developer-operated server. We do not sell your location.
 
-## What the app uses and why
+## Data and purposes
 
-| Data | Used for | Leaves your device? |
+| Data | Processing and storage | Off-device handling |
 | --- | --- | --- |
-| **Precise location** (GPS), only while the app is open | Stamping coordinates, address and map; writing location into photo metadata (EXIF) if you turn that on; placing your captures on the Library map | Yes, partly: your approximate position is sent to our map provider to draw map tiles, and coordinates are sent to your device's address service (geocoder) to look up the address. |
-| **Camera and microphone** | Taking photos and recording video with sound | No. Recordings are saved to your device. |
-| **Photos and videos you capture** | Showing them in the in-app Library, map and viewer | No, unless you choose to share them using Android's share menu. |
-| **Details you type into the stamp** (e.g. name, phone, project title) | Printing them on your captures | No. Stored only on your device. |
+| Camera, photos and videos | Capture, stamp, display and playback; saved to the device gallery, including an optional original | No automatic media upload by the app; sharing is your choice |
+| Microphone/audio | Optional video soundtrack stored in the video file | No automatic audio upload |
+| Precise/approximate location and accuracy/integrity information | Foreground geostamping, optional photo GPS metadata and local capture-location index for the Library map | Map requests can reveal precise areas viewed; coordinates are passed to the device address service |
+| Addresses/place labels | Visible stamp and local index | Device geocoder may contact its backend |
+| Stamp details, such as name, phone or project title | App-private preferences/templates and visible media | Included in files you choose to share |
+| Network/request information | Fetching map imagery and provider copyright metadata | Esri receives requests, IP address and app/request headers; tiles identify viewed areas |
 
-The app never accesses location in the background.
+Location is used while the camera interface is active, not for background tracking. The app remains usable without location permission. Microphone denial allows silent video. Android permission settings let you deny or revoke access.
 
-## Third-party services
+## Recipients and services
 
-- **Maps:** [Esri — ArcGIS Location Platform]. Receives map-tile requests that
-  reveal the area you are viewing or photographing, your IP address and the
-  app identifier. Esri's privacy statement: https://www.esri.com/en-us/privacy/overview
-- **Address lookup:** your device's geocoding service (on most Android phones
-  provided by Google Play services), under that provider's privacy terms.
-- **Sharing:** when you share a photo or video, the app you choose receives the
-  file, including any visible stamp and, if enabled, its location metadata.
+- **Maps:** Esri ArcGIS services receive map and service-metadata requests. Requests for high-zoom tiles can reveal precise location. See [Esri's privacy statement](https://www.esri.com/en-us/privacy/privacy-statements/privacy-statement) and [privacy supplement](https://www.esri.com/en-us/privacy/privacy-statements/privacy-supplement).
+- **Addresses:** Android's device Geocoder may use an OEM/system-provider backend. Availability, handling and privacy terms depend on the device. The app does not use a separate Google Maps SDK or Esri geocoding API.
+- **Sharing:** the destination app you select receives the file and any visible stamp, soundtrack and retained metadata. The destination's handling is governed by its own terms.
+- **Other gallery/backup apps:** your separately configured gallery or cloud services may back up saved media independently of this app.
 
-These providers process data under their own terms and may change or become
-unavailable.
+Provider contract roles, retention periods and international transfer arrangements must be confirmed by bitcode.bh before this draft is published. Do not describe processing as memory-only or assume providers keep no logs.
+
+## Location choices and sharing
+
+“Embed GPS in photo metadata” controls EXIF GPS only. Disabling it does **not** remove location printed into the visible stamp/map or existing local index entries. Review the stamp fields and saved file before sharing; omit location-bearing fields/maps if you do not want them visible. Once burned into an image or video, visible text cannot be removed by deleting EXIF. Copies already shared are outside the app's control.
 
 ## Storage, retention and deletion
 
-- Photos and videos are saved in your device gallery under
-  "Pictures/[App name]". Delete them from the app's Library or your gallery.
-- The app keeps a small index of capture locations and your settings in its
-  private storage. They are removed when you uninstall the app or clear its
-  storage (Android Settings → Apps → [App name] → Storage → Clear storage).
-- We hold no copy of your data, so there is nothing for us to delete on our
-  side. Map and address providers may keep request logs under their own
-  policies.
+Captures are saved to the gallery album `Pictures/GPS Camera Next/`, which retains its earlier name so existing captures remain together. The app keeps a private local index of captured coordinates/place/integrity and private preferences/templates. These remain until the relevant entry is deleted, app storage is cleared or the app is uninstalled. Delete captures through the Library or gallery. Android may require confirmation for some deletions.
 
-## Your choices
+Clearing app storage or uninstalling removes app-private settings/index; gallery media can remain and must be deleted separately. It does not erase files already shared or copies held by other backup apps/providers.
 
-- Deny or revoke location access at any time in Android settings; the app keeps
-  working without location.
-- Turn off "Embed GPS in photo metadata" to keep coordinates out of saved
-  files. A visible stamp still shows what you chose to print.
-- Location in shared photos can reveal where you live or work — check before
-  you share.
+The app is configured to exclude private files/preferences/indexes from Android cloud backup and device transfer. This does not retract old backups or control separate gallery backups or every OEM's transfer tools. Provider-side retention/deletion requests must follow the applicable provider relationship and privacy terms; do not promise an unverified deletion period.
 
 ## Security
 
-All network requests use encrypted connections (HTTPS). The app requests only
-the permissions it needs: camera, microphone (video sound), location
-(foreground), internet, and storage on Android 9 and older.
+Direct app network endpoints use HTTPS and the app blocks cleartext network traffic. Private JSON is protected by Android's app sandbox and device security; it is not separately encrypted by this app. We do not claim end-to-end encryption of map/geocoder processing. Shared files can disclose sensitive places such as your home or workplace.
 
-## Children
+## Rights, audience and international processing
 
-The app is not directed to children under 13 [or the age required in your
-market].
+Contact the privacy email above for questions or applicable access, correction, deletion or grievance requests. The developer must verify the request and respond as required by the applicable law. There is no app account to delete. Do not claim that a missing developer server removes all privacy obligations.
 
-## Your rights
-
-Depending on where you live (for example under India's Digital Personal Data
-Protection Act, 2023, or the EU GDPR), you may have rights to information,
-correction and grievance redressal. Contact [privacy email]; we will respond
-within [30] days. [Grievance officer name, if required.]
+Before publication, confirm the intended audience and country-specific lawful basis, notices, child-data rules and cross-border safeguards with the actual service arrangements. No child-directed or worldwide legal-compliance claim is made by this draft.
 
 ## Changes
 
-We will update this policy when the app's data practices change and show the
-new effective date here.
+Material changes to data handling will be reflected in the in-app explanation, this policy and the Google Play Data safety declaration as applicable. Set the effective date and maintain a reachable contact before launch.

@@ -5,10 +5,10 @@ import '../../core/design/text_styles.dart';
 import '../../core/design/tokens.dart';
 import '../../core/glass.dart';
 import '../../core/widgets/controls.dart';
-import '../../core/widgets/pressable.dart';
 import '../../core/widgets/transitions.dart';
 import '../../models/coordinates.dart';
 import '../../models/geo_data.dart';
+import '../../models/location_integrity.dart';
 import '../../models/map_kind.dart';
 import '../../models/template.dart';
 import '../../state/settings_controller.dart';
@@ -138,7 +138,7 @@ class _AppSettingsStripState extends State<AppSettingsStrip> {
   // active state (its popup open) is shown by colour alone.
   Widget _catTile(SettingsCat c) {
     final active = _active == c;
-    return Pressable(
+    return SettingsTap(
       onTap: () => _select(c),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 2),
@@ -153,11 +153,8 @@ class _AppSettingsStripState extends State<AppSettingsStrip> {
             const SizedBox(height: 4),
             Text(
               c.stripLabel,
-              style: AppText.caption.copyWith(
-                fontSize: 9,
-                letterSpacing: 0.2,
-                color: active ? Palette.textHi : Palette.textMid,
-                fontWeight: active ? FontWeight.w700 : FontWeight.w600,
+              style: AppText.label.copyWith(
+                color: active ? Palette.accentYellow : Palette.textMid,
               ),
             ),
           ],
@@ -249,22 +246,10 @@ class _SettingsPopup extends StatelessWidget {
     switch (cat) {
       case SettingsCat.stamp:
         return [
-          // Toggle at the top
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: Insets.sm),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(child: Text('Show stamp', style: AppText.bodyHi)),
-                const SizedBox(width: Insets.sm),
-                CycleTile(
-                  icon: Icons.visibility_outlined,
-                  label: s.stampEnabled ? 'On' : 'Off',
-                  active: true,
-                  onTap: () => s.update(() => s.stampEnabled = !s.stampEnabled),
-                ),
-              ],
-            ),
+          GlassSwitchTile(
+            label: 'Show stamp',
+            value: s.stampEnabled,
+            onChanged: (value) => s.update(() => s.stampEnabled = value),
           ),
           _div(),
           _NavTile(
@@ -295,8 +280,17 @@ class _SettingsPopup extends StatelessWidget {
         // One combined popup: base map, coordinate format, and the format/unit
         // tiles, each under its own small group label.
         return [
+          _SettingRow<MockLocationPolicy>(
+            label: 'Android mock locations',
+            options: const [
+              (value: MockLocationPolicy.label, label: 'Label'),
+              (value: MockLocationPolicy.omitCoordinates, label: 'Omit GPS'),
+            ],
+            selected: s.mockLocationPolicy,
+            onChanged: (v) => s.update(() => s.mockLocationPolicy = v),
+          ),
           _SettingRow<int>(
-            label: 'Maximum GPS error',
+            label: 'Preferred GPS accuracy',
             options: [
               for (final limit in SettingsController.gpsAccuracyOptions)
                 (value: limit, label: '$limit m'),
@@ -377,23 +371,21 @@ class _SettingsPopup extends StatelessWidget {
                         ),
                       ),
                     ),
-                    Expanded(
-                      child: CycleTile(
-                        icon: Icons.schedule,
-                        label: s.clock24 ? '24h' : '12h',
-                        active: true,
-                        onTap: () => s.update(() => s.clock24 = !s.clock24),
-                      ),
-                    ),
                   ],
                 ),
               ],
             ),
           ),
+          GlassSwitchTile(
+            label: '24-hour time',
+            icon: Icons.schedule,
+            value: s.clock24,
+            onChanged: (value) => s.update(() => s.clock24 = value),
+          ),
         ];
       case SettingsCat.about:
         return [
-          const _AboutRow(label: 'App', value: 'GPS Camera Next'),
+          const _AboutRow(label: 'App', value: 'PinShutter'),
           FutureBuilder<String>(
             future: appVersion(),
             builder: (context, version) =>
@@ -479,14 +471,20 @@ class _NavTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Pressable(
+    return SettingsTap(
       onTap: onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(
+          horizontal: Insets.xs,
+          vertical: 18,
+        ),
         child: Row(
           children: [
-            Icon(icon, size: 20, color: Palette.accentMuted),
-            const SizedBox(width: 14),
+            SizedBox.square(
+              dimension: 24,
+              child: Icon(icon, size: 20, color: Palette.accentMuted),
+            ),
+            const SizedBox(width: 12),
             Expanded(child: Text(title, style: AppText.bodyHi)),
             Text(value, style: AppText.label.copyWith(color: Palette.textMid)),
             const SizedBox(width: 4),
@@ -506,7 +504,7 @@ class _AboutLink extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Semantics(
     button: true,
-    child: Pressable(
+    child: SettingsTap(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 11),

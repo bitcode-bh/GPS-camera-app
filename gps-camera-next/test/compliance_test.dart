@@ -15,7 +15,7 @@ void main() {
     for (final kind in MapKind.values) {
       expect(kind.tileUrl, startsWith('https://server.arcgisonline.com/'));
       expect(kind.tileDimension, 256);
-      expect(kind.dataCredit, contains('Esri'));
+      expect(kind.metadataUrls, isNotEmpty);
     }
     expect(MapKind.hybrid.overlayUrl, isNotNull);
     expect(MapKind.normal.overlayUrl, isNull);

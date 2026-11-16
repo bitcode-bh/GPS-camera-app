@@ -5,25 +5,28 @@ offline maps or "most accurate" claims — none are implemented or verified.
 
 ## Title (≤30 characters)
 
-Pick one after trademark checks (audit §Name):
-`Wherelight: GPS Photo Stamp` (27) · `Fieldproof: GPS Photo Proof` (27) ·
-`Placelight: GPS Camera` (22) · `Plotmark: Geotag Camera` (23) ·
-`Wayproof: Photo Location` (24). Current working name: `GPS Camera Next` (15).
+**PinShutter: GPS Camera** (22 characters).
+
+App display name: **PinShutter**. Developer display name: **bitcode.bh**.
+The owner explicitly approved this branding on 15 November 2026.
+Trademark/domain clearance remains pending; this is the approved local listing
+draft, not a published Play listing. Earlier name suggestions are superseded.
 
 ## Short description (≤80 characters)
 
-`Stamp photos and videos with time, place and map. Files stay on your phone.` (75)
+`Add time, location and maps to photos and videos. No ads or account.`
 
 ## Full description (≤4,000 characters)
 
-[App name] adds when and where to every photo and video you take — clearly,
-and without uploading your pictures anywhere.
+PinShutter adds time and available location to photos and videos.
+Captures are saved to your device gallery without automatic media uploads
+to a developer-operated server.
 
 **Stamp what matters**
 • Date and time, coordinates, address and a small map on each capture
 • Choose a template, edit fields, and place the map left or right
 • Video gets the same stamp as photos; sideways clips are saved upright
-• Optional location in photo metadata (EXIF), on or off
+• Optional location in photo metadata (EXIF); visible stamp fields are separate
 
 **A camera that stays out of the way**
 • Photo and video modes with zoom, exposure and white-balance controls
@@ -36,9 +39,11 @@ and without uploading your pictures anywhere.
 • Map view of your latest geotagged captures
 
 **Private by design**
-• Captures are saved to your phone's gallery — no account, no cloud upload
+• Captures are saved to your phone's gallery — no app account
 • No ads, no analytics
-• Location is used only while the app is open
+• Location is used while the camera is active; capture locations are indexed locally
+• Map requests can reveal precise viewed areas to Esri; addresses use your device geocoder
+• Sharing and separate gallery/backup apps can send saved files off device
 
 Maps powered by Esri. Map and address data come from third-party services and
 may be inaccurate; do not use them for navigation or emergencies.
@@ -46,8 +51,8 @@ may be inaccurate; do not use them for navigation or emergencies.
 ## Category and tags
 
 Category: **Photography**. Tags: camera, GPS, timestamp, geotag.
-Content rating: complete the IARC questionnaire (no user-to-user content, no
-ads → expected "Everyone").
+Content rating: complete IARC and the intended-audience declaration; no rating is assigned by this draft.
+Map claims require the final authenticated release to pass provider/attribution/export checks.
 
 ## Graphics
 

@@ -36,7 +36,7 @@ class GpsCameraApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'GPS Camera Next',
+      title: 'PinShutter',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark(),
       home: const CameraScreen(),

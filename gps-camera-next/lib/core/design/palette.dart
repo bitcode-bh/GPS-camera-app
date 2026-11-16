@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// The dark color tokens from Stash 0.28.0.
+/// Stash dark surfaces with the camera’s yellow interaction accent.
 class Palette {
   Palette._();
 
@@ -13,13 +13,14 @@ class Palette {
   static const Color strokeSolid = Color(0x1FFFFFFF);
 
   // ── Accent ─────────────────────────────
-  static const Color teal = Color(0xFFA9B8FF);
-  static const Color cyan = Color(0xFFA9B8FF);
-  static const Color indigo = Color(0xFFA9B8FF);
-  static const Color violet = Color(0xFFA9B8FF);
+  static const Color accentYellow = Color(0xFFFFDB55);
+  static const Color teal = accentYellow;
+  static const Color cyan = accentYellow;
+  static const Color indigo = accentYellow;
+  static const Color violet = accentYellow;
 
   static const List<Color> brand = [teal, cyan, indigo];
-  static const List<Color> brandSoft = [Color(0xFFA9B8FF), Color(0xFFA9B8FF)];
+  static const List<Color> brandSoft = [accentYellow, accentYellow];
 
   static const LinearGradient brandGradient = LinearGradient(
     colors: brand,
@@ -32,7 +33,7 @@ class Palette {
   static const Color warning = Color(0xFFFBBF24);
   static const Color danger = Color(0xFFFF6B6B);
 
-  static const Color accentMuted = Color(0xFFA9B8FF);
+  static const Color accentMuted = accentYellow;
 
   /// Brighter frost used as the fill of a selected pill / segment / toggle.
   static const LinearGradient selectionGradient = LinearGradient(

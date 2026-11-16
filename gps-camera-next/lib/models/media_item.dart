@@ -63,11 +63,17 @@ class MediaItem {
 
 /// Where a photo or video was captured. Never the device's current position.
 class MediaLocation {
-  const MediaLocation(this.lat, this.lon, {this.place = ''});
+  const MediaLocation(
+    this.lat,
+    this.lon, {
+    this.place = '',
+    this.integrityNote = '',
+  });
 
   final double lat;
   final double lon;
   final String place;
+  final String integrityNote;
 
   /// Rejects missing, out-of-range and null-island coordinates.
   static bool isValid(double? lat, double? lon) =>
@@ -79,14 +85,24 @@ class MediaLocation {
       lon.abs() <= 180 &&
       !(lat == 0 && lon == 0);
 
-  Map<String, Object?> toJson() => {'lat': lat, 'lon': lon, 'place': place};
+  Map<String, Object?> toJson() => {
+    'lat': lat,
+    'lon': lon,
+    'place': place,
+    if (integrityNote.isNotEmpty) 'integrityNote': integrityNote,
+  };
 
   static MediaLocation? fromJson(Object? json) {
     if (json is! Map) return null;
     final lat = (json['lat'] as num?)?.toDouble();
     final lon = (json['lon'] as num?)?.toDouble();
     if (!isValid(lat, lon)) return null;
-    return MediaLocation(lat!, lon!, place: json['place'] as String? ?? '');
+    return MediaLocation(
+      lat!,
+      lon!,
+      place: json['place'] as String? ?? '',
+      integrityNote: json['integrityNote'] as String? ?? '',
+    );
   }
 }
 

@@ -1,0 +1,57 @@
+package,version,scope,license,license_sha256,source
+archive,4.0.9,dev only,MIT,32f97d332eae7453ec4079858e6f1d74be85beeb6d3881068b47d02a379cccea,https://pub.dev/packages/archive/versions/4.0.9/license
+args,2.7.0,dev only,BSD-3-Clause,dfb09c74e29386cd3e2719f32d4995d59526179753931d31840757c77fbf2791,https://pub.dev/packages/args/versions/2.7.0/license
+async,2.13.1,main dependency graph,BSD-3-Clause,ff15faa32a2e638107b7789592b14426162a75ba620044ee2340a20ec6ce5e73,https://pub.dev/packages/async/versions/2.13.1/license
+boolean_selector,2.1.2,dev only,BSD-3-Clause,b71519245009a3b8f126196a5408ec031e216e8e0d985085958c6543f82a8a2a,https://pub.dev/packages/boolean_selector/versions/2.1.2/license
+camera,0.12.0+1,main dependency graph,BSD-3-Clause,420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d,https://pub.dev/packages/camera/versions/0.12.0+1/license
+camera_android_camerax,0.7.2+1,main dependency graph,BSD-3-Clause,420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d,https://pub.dev/packages/camera_android_camerax/versions/0.7.2+1/license
+camera_avfoundation,0.10.1,main dependency graph,BSD-3-Clause,420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d,https://pub.dev/packages/camera_avfoundation/versions/0.10.1/license
+camera_platform_interface,2.13.0,main dependency graph,BSD-3-Clause,420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d,https://pub.dev/packages/camera_platform_interface/versions/2.13.0/license
+camera_web,0.3.5+4,main dependency graph,BSD-3-Clause,420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d,https://pub.dev/packages/camera_web/versions/0.3.5+4/license
+characters,1.4.1,main dependency graph,BSD-3-Clause,0371d1da6a57fb791db29d29b95333429205f51f3cb2eb3a0c12d91838a38744,https://pub.dev/packages/characters/versions/1.4.1/license
+checked_yaml,2.0.4,dev only,BSD-3-Clause,4771d808721f4d5f02318ab857c92f5a5dce87b14ae1c3770fe21ca7fd4a9280,https://pub.dev/packages/checked_yaml/versions/2.0.4/license
+cli_util,0.4.2,dev only,BSD-3-Clause,ff15faa32a2e638107b7789592b14426162a75ba620044ee2340a20ec6ce5e73,https://pub.dev/packages/cli_util/versions/0.4.2/license
+clock,1.1.2,dev only,Apache-2.0,58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd,https://pub.dev/packages/clock/versions/1.1.2/license
+collection,1.19.1,main dependency graph,BSD-3-Clause,ff15faa32a2e638107b7789592b14426162a75ba620044ee2340a20ec6ce5e73,https://pub.dev/packages/collection/versions/1.19.1/license
+cross_file,0.3.5+2,main dependency graph,BSD-3-Clause,420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d,https://pub.dev/packages/cross_file/versions/0.3.5+2/license
+csslib,1.0.2,main dependency graph,BSD-3-Clause,dfb09c74e29386cd3e2719f32d4995d59526179753931d31840757c77fbf2791,https://pub.dev/packages/csslib/versions/1.0.2/license
+fake_async,1.3.3,dev only,Apache-2.0,58d1e17ffe5109a7ae296caafcadfdbe6a7d176f0bc4ab01e12a689b0499d8bd,https://pub.dev/packages/fake_async/versions/1.3.3/license
+ffi,2.2.0,dev only,BSD-3-Clause,0371d1da6a57fb791db29d29b95333429205f51f3cb2eb3a0c12d91838a38744,https://pub.dev/packages/ffi/versions/2.2.0/license
+flutter,0.0.0,main dependency graph,BSD-3-Clause,a598db94b6290ffbe10b5ecf911057b6a943351c727fdda9e5f2891d68700a20,https://github.com/flutter/flutter/blob/3.44.2/LICENSE
+flutter_launcher_icons,0.14.4,dev only,MIT,02c454256448927423b4c0e517a083cadf78a8d9467a9d31ad3b4f4ff48ff7ca,https://pub.dev/packages/flutter_launcher_icons/versions/0.14.4/license
+flutter_lints,6.0.0,dev only,BSD-3-Clause,89519eca6f7b9529b35bdddd623a58c3af06a88c458dbd6531ddb4675acf75a9,https://pub.dev/packages/flutter_lints/versions/6.0.0/license
+flutter_plugin_android_lifecycle,2.0.35,main dependency graph,BSD-3-Clause,420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d,https://pub.dev/packages/flutter_plugin_android_lifecycle/versions/2.0.35/license
+flutter_test,0.0.0,dev only,BSD-3-Clause,a598db94b6290ffbe10b5ecf911057b6a943351c727fdda9e5f2891d68700a20,https://github.com/flutter/flutter/blob/3.44.2/LICENSE
+flutter_web_plugins,0.0.0,main dependency graph,BSD-3-Clause,a598db94b6290ffbe10b5ecf911057b6a943351c727fdda9e5f2891d68700a20,https://github.com/flutter/flutter/blob/3.44.2/LICENSE
+html,0.15.7,main dependency graph,MIT,6ed8a26ed0f30589422f86356eed53bb6dacffc3e2fd4feddc944c4331945151,https://pub.dev/packages/html/versions/0.15.7/license
+image,4.8.0,dev only,MIT,32e9713c6b00ce3b12c3e808d02acbcc2d5fea4724c6e89d82add72b005576b4,https://pub.dev/packages/image/versions/4.8.0/license
+json_annotation,4.12.0,dev only,BSD-3-Clause,143839f62c9b7f88143ea9f688361c27050888acde7696b34e04414bd254fafc,https://pub.dev/packages/json_annotation/versions/4.12.0/license
+leak_tracker,11.0.2,dev only,BSD-3-Clause,08a004aa8956c3cf3b24f7f69c966247233953e18e6afaa61191ea47b7eb70f6,https://pub.dev/packages/leak_tracker/versions/11.0.2/license
+leak_tracker_flutter_testing,3.0.10,dev only,BSD-3-Clause,08a004aa8956c3cf3b24f7f69c966247233953e18e6afaa61191ea47b7eb70f6,https://pub.dev/packages/leak_tracker_flutter_testing/versions/3.0.10/license
+leak_tracker_testing,3.0.2,dev only,BSD-3-Clause,08a004aa8956c3cf3b24f7f69c966247233953e18e6afaa61191ea47b7eb70f6,https://pub.dev/packages/leak_tracker_testing/versions/3.0.2/license
+lints,6.1.0,dev only,BSD-3-Clause,421fe78c3b5df297f8b4ab2c74f2450a274ee6d245a113091f6b9f90570af193,https://pub.dev/packages/lints/versions/6.1.0/license
+matcher,0.12.19,dev only,BSD-3-Clause,3c32b53167c7dae9190c38dab5dd9fe1789c53623ebc7d1babcb29914c5b3f16,https://pub.dev/packages/matcher/versions/0.12.19/license
+material_color_utilities,0.13.0,main dependency graph,Apache-2.0,d103f246ef4c18dab8af0c1dcf6a8af884e5cff554da7261a48ac43c17d98f2e,https://pub.dev/packages/material_color_utilities/versions/0.13.0/license
+meta,1.18.0,main dependency graph,BSD-3-Clause,b71519245009a3b8f126196a5408ec031e216e8e0d985085958c6543f82a8a2a,https://pub.dev/packages/meta/versions/1.18.0/license
+path,1.9.1,main dependency graph,BSD-3-Clause,3c32b53167c7dae9190c38dab5dd9fe1789c53623ebc7d1babcb29914c5b3f16,https://pub.dev/packages/path/versions/1.9.1/license
+petitparser,7.0.2,dev only,MIT,d2e8ffdbe89acbc10d5d1f2b03e7dbddf0a9f1742e809176682b62ef3d573b3e,https://pub.dev/packages/petitparser/versions/7.0.2/license
+plugin_platform_interface,2.1.8,main dependency graph,BSD-3-Clause,89519eca6f7b9529b35bdddd623a58c3af06a88c458dbd6531ddb4675acf75a9,https://pub.dev/packages/plugin_platform_interface/versions/2.1.8/license
+posix,6.5.0,dev only,MIT,aaf6271abd048deb3125828613f1797b7556472de6c7acd7103bd43e9cb6a84b,https://pub.dev/packages/posix/versions/6.5.0/license
+sky_engine,0.0.0,main dependency graph,Composite Flutter engine notices,82a5f93f918f99ff82af18c8be176c709dc812cb3f5e1e1cd93847bdeb0f9369,https://github.com/flutter/flutter/blob/3.44.2/LICENSE
+source_span,1.10.2,main dependency graph,BSD-3-Clause,3c32b53167c7dae9190c38dab5dd9fe1789c53623ebc7d1babcb29914c5b3f16,https://pub.dev/packages/source_span/versions/1.10.2/license
+stack_trace,1.12.1,dev only,BSD-3-Clause,ff0b91d4f3c32b25cb6ec84985e8da89b0ba2a2b2f7eef353cda5e5423a20390,https://pub.dev/packages/stack_trace/versions/1.12.1/license
+stream_channel,2.1.4,dev only,BSD-3-Clause,ff15faa32a2e638107b7789592b14426162a75ba620044ee2340a20ec6ce5e73,https://pub.dev/packages/stream_channel/versions/2.1.4/license
+stream_transform,2.1.1,main dependency graph,BSD-3-Clause,ea97a7558a7bd7cee4e2355f7529e3cbebb0dcbb546ddb9a90f10c9eb6b08da5,https://pub.dev/packages/stream_transform/versions/2.1.1/license
+string_scanner,1.4.1,dev only,BSD-3-Clause,3c32b53167c7dae9190c38dab5dd9fe1789c53623ebc7d1babcb29914c5b3f16,https://pub.dev/packages/string_scanner/versions/1.4.1/license
+term_glyph,1.2.2,main dependency graph,BSD-3-Clause,ea97a7558a7bd7cee4e2355f7529e3cbebb0dcbb546ddb9a90f10c9eb6b08da5,https://pub.dev/packages/term_glyph/versions/1.2.2/license
+test_api,0.7.11,dev only,BSD-3-Clause,ff1b9f0df9036c04be424b1e3ce12789bea880ad5ffc3a48e069ae2d40a087a4,https://pub.dev/packages/test_api/versions/0.7.11/license
+vector_math,2.2.0,main dependency graph,BSD-3-Clause,b5d856a1e27e9ebea4957fc3526f1c65782a04894b113c6b3b0fb1321dbdec55,https://pub.dev/packages/vector_math/versions/2.2.0/license
+video_player,2.14.1,main dependency graph,BSD-3-Clause,420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d,https://pub.dev/packages/video_player/versions/2.14.1/license
+video_player_android,2.12.2,main dependency graph,BSD-3-Clause,420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d,https://pub.dev/packages/video_player_android/versions/2.12.2/license
+video_player_avfoundation,2.12.1,main dependency graph,BSD-3-Clause,420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d,https://pub.dev/packages/video_player_avfoundation/versions/2.12.1/license
+video_player_platform_interface,6.9.0,main dependency graph,BSD-3-Clause,420f7739f169097f0aad1242045169cd643c8f1d94e62866fad265ae4c369b7d,https://pub.dev/packages/video_player_platform_interface/versions/6.9.0/license
+video_player_web,2.4.0,main dependency graph,BSD-3-Clause,89519eca6f7b9529b35bdddd623a58c3af06a88c458dbd6531ddb4675acf75a9,https://pub.dev/packages/video_player_web/versions/2.4.0/license
+vm_service,15.2.0,dev only,BSD-3-Clause,ad6a71997da90924b2cfb1fb47ec46537f70faf469efe016168794ae45ed6888,https://pub.dev/packages/vm_service/versions/15.2.0/license
+web,1.1.1,main dependency graph,BSD-3-Clause,aa913ff50d7542eb8cc35b9f48a80928ac6819ba9057f85d424655e3e8dc271c,https://pub.dev/packages/web/versions/1.1.1/license
+xml,6.6.1,dev only,MIT,1f18a2e5a5c57381d93efa92df86477eb1205689b345417c90fcfdc09fa4fa1f,https://pub.dev/packages/xml/versions/6.6.1/license
+yaml,3.1.3,dev only,MIT,d47b93335401b052d79a2f5a3710e4cf7b5aed782faedf84d40fbdd6eb934ec7,https://pub.dev/packages/yaml/versions/3.1.3/license

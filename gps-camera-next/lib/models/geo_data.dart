@@ -1,6 +1,7 @@
 import '../core/date_format.dart';
 
 import 'coordinates.dart';
+import 'location_integrity.dart';
 
 /// Address verbosity for the stamp: long or short.
 enum AddressFormat { long, short }
@@ -32,6 +33,19 @@ class GeoData {
 
   final DateTime time;
   final DateTime? fixTime;
+  final LocationIntegrity integrity;
+  final String locationNote;
+  final double? rawLat;
+  final double? rawLon;
+  final double? rawAccuracy;
+
+  String get locationDescription => [
+    'Location integrity: ${integrity.name}',
+    if (integrity.warning.isNotEmpty) integrity.warning,
+    if (locationNote.isNotEmpty) locationNote,
+    'accuracy: $accuracy m',
+    if (fixTime != null) 'fix: ${fixTime!.toUtc().toIso8601String()}',
+  ].join('; ');
 
   static const fixLifetime = Duration(seconds: 60);
   static const clockTolerance = Duration(seconds: 5);
@@ -72,6 +86,11 @@ class GeoData {
     required this.isoCode,
     required this.time,
     this.fixTime,
+    this.integrity = LocationIntegrity.trusted,
+    this.locationNote = '',
+    this.rawLat,
+    this.rawLon,
+    this.rawAccuracy,
     this.temperatureC,
     this.windKph,
     this.humidity,
@@ -96,6 +115,7 @@ class GeoData {
     time: time,
     isLive: false,
     hasLocation: false,
+    integrity: LocationIntegrity.unavailable,
   );
 
   factory GeoData.demo() => GeoData(
@@ -123,7 +143,12 @@ class GeoData {
     isLive: false,
   );
 
-  GeoData copyWith({DateTime? time, double? heading}) => GeoData(
+  GeoData copyWith({
+    DateTime? time,
+    double? heading,
+    LocationIntegrity? integrity,
+    String? locationNote,
+  }) => GeoData(
     lat: lat,
     lon: lon,
     altitude: altitude,
@@ -140,6 +165,11 @@ class GeoData {
     isoCode: isoCode,
     time: time ?? this.time,
     fixTime: fixTime,
+    integrity: integrity ?? this.integrity,
+    locationNote: locationNote ?? this.locationNote,
+    rawLat: rawLat,
+    rawLon: rawLon,
+    rawAccuracy: rawAccuracy,
     temperatureC: temperatureC,
     windKph: windKph,
     humidity: humidity,

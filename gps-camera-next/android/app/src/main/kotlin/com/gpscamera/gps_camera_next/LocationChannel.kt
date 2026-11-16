@@ -16,6 +16,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
@@ -128,7 +129,7 @@ class LocationChannel(private val activity: Activity, messenger: BinaryMessenger
                     // Only a usable fix: a rough cell-tower guess would stamp
                     // the wrong place until GPS catches up.
                     .filter { it.hasAccuracy() && it.accuracy <= SEED_ACCURACY_M }
-                    .filter { System.currentTimeMillis() - it.time < RECENT_MS }
+                    .filter { (SystemClock.elapsedRealtimeNanos() - it.elapsedRealtimeNanos) in 0 until RECENT_MS * 1_000_000 }
                     .minByOrNull { it.accuracy }
                 if (recent != null) {
                     onLocationChanged(recent)
@@ -162,6 +163,9 @@ class LocationChannel(private val activity: Activity, messenger: BinaryMessenger
         }
 
         override fun onLocationChanged(location: Location) {
+            @Suppress("DEPRECATION")
+            val mock = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) location.isMock
+                else location.isFromMockProvider
             sink?.success(
                 mapOf(
                     "lat" to location.latitude,
@@ -171,6 +175,9 @@ class LocationChannel(private val activity: Activity, messenger: BinaryMessenger
                     "heading" to (if (location.hasBearing()) location.bearing.toDouble() else -1.0),
                     "speed" to (if (location.hasSpeed()) location.speed.toDouble() else -1.0),
                     "time" to location.time,
+                    "isMock" to mock,
+                    "elapsedRealtimeNanos" to location.elapsedRealtimeNanos,
+                    "ageNanos" to (SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos),
                 )
             )
         }

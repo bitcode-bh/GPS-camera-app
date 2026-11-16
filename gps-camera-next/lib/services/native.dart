@@ -45,6 +45,19 @@ class Native {
   static Future<bool> openGallery() async =>
       await _channel.invokeMethod<bool>('openGallery') ?? false;
 
+  /// Opens public policy/provider pages in the user's browser.
+  static Future<bool> openWebPage(String value) async {
+    final uri = Uri.tryParse(value);
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.host.isEmpty ||
+        uri.userInfo.isNotEmpty) {
+      return false;
+    }
+    return await _channel.invokeMethod<bool>('openWebPage', {'url': value}) ??
+        false;
+  }
+
   /// The device geocoder's address for a point, or null when the phone has
   /// no geocoder or nothing is known there.
   static Future<Map<String, String?>?> geocode(double lat, double lon) async {

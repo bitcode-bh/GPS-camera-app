@@ -147,6 +147,7 @@ class TileMap extends StatefulWidget {
     this.markers = const [],
     this.interactive = true,
     this.userAgent,
+    this.headers = const {},
     this.background = const Color(0xFF1C1C1E),
     this.onTap,
     this.onTileError,
@@ -157,6 +158,7 @@ class TileMap extends StatefulWidget {
   final List<MapMarker> markers;
   final bool interactive;
   final String? userAgent;
+  final Map<String, String> headers;
   final Color background;
   final VoidCallback? onTap;
   final VoidCallback? onTileError;
@@ -251,9 +253,10 @@ class _TileMapState extends State<TileMap> {
       count - 1,
       ((topLeft.dy + _size.height) / tileSize).floor(),
     );
-    final headers = widget.userAgent == null
-        ? null
-        : {'User-Agent': widget.userAgent!};
+    final headers = {
+      ...widget.headers,
+      if (widget.userAgent != null) 'User-Agent': widget.userAgent!,
+    };
     return [
       for (var ty = top; ty <= bottom; ty++)
         for (var tx = first; tx <= last; tx++)

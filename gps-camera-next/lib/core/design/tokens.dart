@@ -1,4 +1,4 @@
-import 'package:flutter/animation.dart';
+import 'package:flutter/material.dart';
 
 /// Spacing scale (4-pt grid). Use these instead of magic numbers so the layout
 /// stays consistent and scalable across screen sizes.
@@ -22,6 +22,14 @@ class Corners {
   static const double lg = 24;
   static const double xl = 32;
   static const double pill = 999;
+
+  static RoundedSuperellipseBorder shape(
+    double radius, {
+    BorderSide side = BorderSide.none,
+  }) => RoundedSuperellipseBorder(
+    borderRadius: BorderRadius.circular(radius),
+    side: side,
+  );
 }
 
 /// Backdrop blur strengths. Sigma drives GPU cost linearly — these are tuned

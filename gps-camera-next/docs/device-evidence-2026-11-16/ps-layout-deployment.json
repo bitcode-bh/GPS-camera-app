@@ -1,0 +1,35 @@
+{
+  "date": "2026-11-16",
+  "device": "Motorola Edge 70",
+  "serial": "ZA223MDVR8",
+  "transport": "secure wireless ADB",
+  "install": "Success (install -r; existing app data retained)",
+  "package": "com.gpscamera.gps_camera_next.debug",
+  "apk_sha256": "f0b4dda33830d7adef6adad7b052c31ecf4399db9bee1aa8bd1165067ebba50e",
+  "changes": [
+    "Approved PS logo and matching wordmark",
+    "Library/Map switch in safe-area bottom navigation",
+    "Geostamp row inset 6 dp from safe viewfinder bottom",
+    "Full fixed-height map credits moved above stamp row",
+    "Back awaits camera disposal and pending saves before engine exit"
+  ],
+  "flutter_analyze": "clean",
+  "flutter_tests_passed": 157,
+  "debug_build": "passed",
+  "packaged_branding_verified": true,
+  "device_checks": {
+    "library_wordmark_seen": true,
+    "bottom_library_map_switch_seen": true,
+    "map_controls_clear_bottom_navigation": true,
+    "camera_foreground_after_update": true,
+    "lower_stamp_seen_behind_in_app_settings": true,
+    "pid": 14845,
+    "scoped_crash_buffer_empty": true,
+    "controlled_camera_exit_retest": "incomplete; foreground changed to notification shade/screenshot overlay while user reviewed app; input guards stopped automation"
+  },
+  "ios_build_run": false,
+  "production_release": false,
+  "committed": false,
+  "pushed": false,
+  "screenshot_policy": "Phone screenshots retained in local temporary files only; no personal gallery/GPS images added to repository"
+}

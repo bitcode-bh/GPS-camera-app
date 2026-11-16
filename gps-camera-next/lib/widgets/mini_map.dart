@@ -8,8 +8,10 @@ import '../core/design/text_styles.dart';
 import '../core/design/tokens.dart';
 import '../core/glass.dart';
 import '../models/map_kind.dart';
+import '../services/map_attribution.dart';
 import '../state/settings_controller.dart';
 import 'tile_map.dart';
+import 'map_credits.dart';
 
 /// A live base-map card centred on the fix, with an accuracy ring and a glowing
 /// heading pin. [compact] trims the chrome for small stamp thumbnails. Wrapped
@@ -32,6 +34,7 @@ class MiniMap extends StatelessWidget {
   /// tile map. Used for the many tiny previews (template gallery, editor) so we
   /// never spin up a dozen map engines / tile downloads at once.
   final bool realMap;
+  final bool allowTiles;
 
   const MiniMap({
     super.key,
@@ -45,6 +48,7 @@ class MiniMap extends StatelessWidget {
     this.compact = false,
     this.showHints = true,
     this.realMap = true,
+    this.allowTiles = true,
   });
 
   @override
@@ -57,15 +61,24 @@ class MiniMap extends StatelessWidget {
         label: kind.label,
       );
     }
+    return MapCreditsBuilder(
+      kind: kind,
+      builder: (context, credit) => _map(credit != null && allowTiles),
+    );
+  }
+
+  Widget _map(bool creditsReady) {
     final center = GeoPoint(lat, lon);
     final br = BorderRadius.circular(radius);
     return RepaintBoundary(
-      child: ClipRRect(
+      child: ClipRSuperellipse(
         borderRadius: br,
         child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: br,
-            border: Border.all(color: Palette.glassStrokeSoft, width: 0.6),
+          decoration: ShapeDecoration(
+            shape: Corners.shape(
+              radius,
+              side: const BorderSide(color: Palette.glassStrokeSoft, width: .6),
+            ),
           ),
           child: Stack(
             fit: StackFit.expand,
@@ -79,7 +92,8 @@ class MiniMap extends StatelessWidget {
                 controller: TileMapController(center: center, zoom: zoom),
                 interactive: false,
                 userAgent: MapTiles.userAgent,
-                sources: tileSources(kind),
+                headers: MapTiles.headers,
+                sources: creditsReady ? tileSources(kind) : const [],
                 markers: hereMarkers(
                   center,
                   accent,
@@ -107,6 +121,14 @@ class MiniMap extends StatelessWidget {
               // Esri requires credit on or near the map; "Esri" is the
               // minimum where space is tight. Part of every capture.
               const Positioned(right: 4, bottom: 3, child: _EsriCredit()),
+              if (!creditsReady)
+                const Center(
+                  child: Text(
+                    'Map unavailable',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 10, color: Colors.white),
+                  ),
+                ),
               if (!compact) ...[
                 if (showHints) ...[
                   Positioned(
@@ -201,10 +223,12 @@ class _Tag extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
+      decoration: ShapeDecoration(
         color: const Color(0x99000000),
-        borderRadius: BorderRadius.circular(7),
-        border: Border.all(color: accent.withValues(alpha: 0.45), width: 0.8),
+        shape: Corners.shape(
+          7,
+          side: BorderSide(color: accent.withValues(alpha: .45), width: .8),
+        ),
       ),
       child: Text(
         text,
@@ -255,12 +279,14 @@ class _StaticMap extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final br = BorderRadius.circular(radius);
-    return ClipRRect(
+    return ClipRSuperellipse(
       borderRadius: br,
       child: DecoratedBox(
-        decoration: BoxDecoration(
-          borderRadius: br,
-          border: Border.all(color: Palette.glassStroke),
+        decoration: ShapeDecoration(
+          shape: Corners.shape(
+            radius,
+            side: const BorderSide(color: Palette.glassStroke),
+          ),
         ),
         child: Stack(
           fit: StackFit.expand,
@@ -489,7 +515,7 @@ class _MapZoomPopupState extends State<_MapZoomPopup> {
             fill: const Color(0xE6080C16),
             stroke: Palette.glassStroke,
             padding: EdgeInsets.zero,
-            child: ClipRRect(
+            child: ClipRSuperellipse(
               borderRadius: BorderRadius.circular(Corners.xl),
               child: SizedBox(
                 height: 280,
@@ -497,15 +523,40 @@ class _MapZoomPopupState extends State<_MapZoomPopup> {
                   onDoubleTap: _resetZoom,
                   child: Stack(
                     children: [
-                      TileMap(
-                        controller: _mapController,
-                        userAgent: MapTiles.userAgent,
-                        sources: tileSources(widget.kind),
-                        markers: hereMarkers(
-                          center,
-                          Palette.teal,
-                          20,
-                          widget.heading,
+                      MapCreditsBuilder(
+                        kind: widget.kind,
+                        builder: (context, credit) => Stack(
+                          children: [
+                            TileMap(
+                              controller: _mapController,
+                              headers: MapTiles.headers,
+                              sources: credit != null
+                                  ? tileSources(widget.kind)
+                                  : const [],
+                              markers: hereMarkers(
+                                center,
+                                Palette.teal,
+                                20,
+                                widget.heading,
+                              ),
+                            ),
+                            Positioned(
+                              left: 8,
+                              right: 8,
+                              bottom: 6,
+                              child: Align(
+                                alignment: Alignment.bottomLeft,
+                                child: MapCreditsButton(
+                                  credits: credit,
+                                  onRetry: () => setState(
+                                    () => MapAttribution.instance.retry(
+                                      widget.kind,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       // Top-Left Floating Zoom Value Chip
@@ -547,19 +598,21 @@ class _MapZoomPopupState extends State<_MapZoomPopup> {
                       // Bottom-Left Reset Instruction Hint
                       Positioned(
                         left: 10,
-                        bottom: 10,
+                        bottom: 44,
                         child: IgnorePointer(
                           child: Container(
                             padding: const EdgeInsets.symmetric(
                               horizontal: 8,
                               vertical: 5,
                             ),
-                            decoration: BoxDecoration(
+                            decoration: ShapeDecoration(
                               color: const Color(0x99070B14),
-                              borderRadius: BorderRadius.circular(Corners.sm),
-                              border: Border.all(
-                                color: Palette.glassStrokeSoft,
-                                width: 0.6,
+                              shape: Corners.shape(
+                                Corners.sm,
+                                side: const BorderSide(
+                                  color: Palette.glassStrokeSoft,
+                                  width: .6,
+                                ),
                               ),
                             ),
                             child: Text(

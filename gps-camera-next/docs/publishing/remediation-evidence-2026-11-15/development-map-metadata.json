@@ -1,0 +1,30 @@
+[
+  {
+    "service": "World_Street_Map",
+    "copyright_present": true,
+    "copyright_characters": 200,
+    "copyright": "Sources: Esri, HERE, Garmin, USGS, Intermap, INCREMENT P, NRCan, Esri Japan, METI, Esri China (Hong Kong), Esri Korea, Esri (Thailand), NGCC, (c) OpenStreetMap contributors, and the GIS User Community",
+    "error_code": null
+  },
+  {
+    "service": "World_Imagery",
+    "copyright_present": true,
+    "copyright_characters": 71,
+    "copyright": "Source: Esri, Vantor, Earthstar Geographics, and the GIS User Community",
+    "error_code": null
+  },
+  {
+    "service": "World_Topo_Map",
+    "copyright_present": true,
+    "copyright_characters": 232,
+    "copyright": "Sources: Esri, HERE, Garmin, Intermap, increment P Corp., GEBCO, USGS, FAO, NPS, NRCAN, GeoBase, IGN, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), (c) OpenStreetMap contributors, and the GIS User Community",
+    "error_code": null
+  },
+  {
+    "service": "Reference/World_Boundaries_and_Places",
+    "copyright_present": true,
+    "copyright_characters": 78,
+    "copyright": "Esri, HERE, Garmin, (c) OpenStreetMap contributors, and the GIS user community",
+    "error_code": null
+  }
+]

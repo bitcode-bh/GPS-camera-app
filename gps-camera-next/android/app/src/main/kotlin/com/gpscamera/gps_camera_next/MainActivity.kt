@@ -116,6 +116,7 @@ class MainActivity : FlutterActivity() {
                                 result.success(setPhotoLocation(
                                     bytes, lat, lon, call.argument<String>("sourcePath"),
                                     call.argument<Int>("quarterTurns") ?: 0,
+                                    call.argument<String>("locationDescription"),
                                 ))
                             } catch (e: Exception) {
                                 result.error("EXIF_FAILED", e.message, null)
@@ -195,7 +196,8 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun setPhotoLocation(
-        bytes: ByteArray, lat: Double?, lon: Double?, sourcePath: String?, quarterTurns: Int
+        bytes: ByteArray, lat: Double?, lon: Double?, sourcePath: String?, quarterTurns: Int,
+        locationDescription: String?
     ): ByteArray {
         val file = File.createTempFile("gps-exif-", ".jpg", cacheDir)
         try {
@@ -236,6 +238,7 @@ class MainActivity : FlutterActivity() {
                 exif.setAttribute(ExifInterface.TAG_GPS_LONGITUDE, exifCoordinate(lon))
                 exif.setAttribute(ExifInterface.TAG_GPS_LONGITUDE_REF, if (lon < 0) "W" else "E")
             }
+            exif.setAttribute(ExifInterface.TAG_USER_COMMENT, locationDescription)
             exif.saveAttributes()
             return file.readBytes()
         } finally {

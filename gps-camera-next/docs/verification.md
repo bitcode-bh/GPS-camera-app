@@ -1,5 +1,14 @@
 # Verification and performance
 
+Location-integrity implementation and its current device-validation limits are
+documented in [location-integrity.md](location-integrity.md). The dated results
+below describe earlier builds.
+
+The subsequent physical-phone run is documented in
+[device-verification-2026-11-15.md](device-verification-2026-11-15.md), including
+saved photo metadata, decoded video frames, the corrected settings notice,
+cleanup and remaining field-test limits.
+
 ## Automated cases
 
 Run `flutter analyze` and `flutter test` from the project directory. The
@@ -37,7 +46,7 @@ opens the stamp style editor.
 | --- | --- |
 | Camera | Start in Photo. Try focus, AE/AF lock, pinch, both vertical controls, both cameras, flash and each aspect ratio. Compare capture framing to the preview and check auto-hide. |
 | Mode transitions | Tap and swipe between Video, Photo and Pro. Photo and Video reuse the Auto controller. Check preview recovery at both native Pro handoffs and while returning from the background. |
-| GPS | Try a valid fix, weak fix, denied permission, disabled provider, stale fix, and movement across the configured jump boundary. Validate that the UI reports quality and stale/weak coordinates never enter the stamp or EXIF. Repeat without a network and check address fallback. |
+| GPS | Try a valid fix, weak fix, denied permission, disabled provider, stale fix, and movement across the configured jump boundary. Validate that stale coordinates are omitted, weak/retained coordinates are explicitly unverified, mock policies retain their warning, and stamp/map/EXIF use one snapshot. Repeat without a network and check address fallback. |
 | Photo output | Shoot each preset and an edited template. Compare date, field order, width, map and top/bottom positioning to the export. Repeat on front/rear cameras, with EXIF and original retention on/off, and at each supported aspect ratio. |
 | Video output | Capture a clip with a moving fix and audible cue. Decode multiple timestamps from the exported file and verify the timestamp progresses, GPS changes with the fix, and audio is synchronized. Verify interruption finalizes the clip and failed rendering yields a clearly identified original. |
 | Gallery | Check zoom, paging, share, delete cancellation, export to the device album, photo details and map access. |

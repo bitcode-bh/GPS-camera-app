@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import '../../core/date_format.dart';
+import '../../core/design/tokens.dart';
+import '../../core/design/text_styles.dart';
 
 import '../../models/map_kind.dart';
 import '../../models/media_item.dart';
@@ -9,6 +11,8 @@ import '../../services/media_image.dart';
 import '../../services/media_library.dart';
 import '../../state/settings_controller.dart';
 import '../../widgets/mini_map.dart' show tileSources;
+import '../../widgets/map_credits.dart';
+import '../../services/map_attribution.dart';
 import '../../widgets/tile_map.dart';
 import '../camera/widgets/camera_design.dart';
 
@@ -126,6 +130,7 @@ class _MediaMapState extends State<MediaMap> {
   void initState() {
     super.initState();
     _library.addListener(_onLibrary);
+    SettingsController.instance.addListener(_onMapSettings);
     _map.addListener(_onMapMoved);
   }
 
@@ -139,6 +144,7 @@ class _MediaMapState extends State<MediaMap> {
   @override
   void dispose() {
     _library.removeListener(_onLibrary);
+    SettingsController.instance.removeListener(_onMapSettings);
     _previewPages.dispose();
     _map
       ..removeListener(_onMapMoved)
@@ -155,6 +161,10 @@ class _MediaMapState extends State<MediaMap> {
       });
       if (_library.mapItems.isEmpty) _mapReady = false;
     });
+  }
+
+  void _onMapSettings() {
+    if (mounted) setState(() => _tilesFailed = false);
   }
 
   List<GeoPoint> get _points => [
@@ -247,31 +257,35 @@ class _MediaMapState extends State<MediaMap> {
               });
             }
             _mapSize = size;
-            return TileMap(
-              key: ValueKey('map-$_tileEpoch-${kind.name}'),
-              controller: _map,
-              userAgent: MapTiles.userAgent,
-              sources: tileSources(kind),
-              onTap: () => setState(() => _selected = null),
-              onTileError: () {
-                if (!_tilesFailed && mounted) {
-                  setState(() => _tilesFailed = true);
-                }
-              },
-              markers: [
-                for (final group in groups)
-                  MapMarker(
-                    key: ValueKey(group.id),
-                    at: GeoPoint(group.at.lat, group.at.lon),
-                    child: _MarkerDot(
-                      group: group,
-                      selected:
-                          selected != null &&
-                          group.items.any((i) => selected.contains(i.key)),
-                      onTap: () => _select(group),
+            return MapCreditsBuilder(
+              kind: kind,
+              builder: (context, credit) => TileMap(
+                key: ValueKey('map-$_tileEpoch-${kind.name}'),
+                controller: _map,
+                userAgent: MapTiles.userAgent,
+                headers: MapTiles.headers,
+                sources: credit != null ? tileSources(kind) : const [],
+                onTap: () => setState(() => _selected = null),
+                onTileError: () {
+                  if (!_tilesFailed && mounted) {
+                    setState(() => _tilesFailed = true);
+                  }
+                },
+                markers: [
+                  for (final group in groups)
+                    MapMarker(
+                      key: ValueKey(group.id),
+                      at: GeoPoint(group.at.lat, group.at.lon),
+                      child: _MarkerDot(
+                        group: group,
+                        selected:
+                            selected != null &&
+                            group.items.any((i) => selected.contains(i.key)),
+                        onTap: () => _select(group),
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             );
           },
         ),
@@ -279,65 +293,99 @@ class _MediaMapState extends State<MediaMap> {
           left: 8,
           top: widget.topPadding + 6,
           right: 8,
-          // Esri requires "Powered by Esri" and data credit on the map.
-          child: IgnorePointer(
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: DecoratedBox(
-                decoration: const BoxDecoration(
-                  color: Colors.black54,
-                  borderRadius: BorderRadius.all(Radius.circular(4)),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 5,
-                    vertical: 2,
-                  ),
-                  child: Text(
-                    'Powered by Esri · ${kind.dataCredit}',
-                    maxLines: 2,
-                    style: const TextStyle(fontSize: 10, color: Colors.white),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              MapCreditsBuilder(
+                kind: kind,
+                builder: (context, credit) => Align(
+                  alignment: Alignment.topLeft,
+                  child: MapCreditsButton(
+                    credits: credit,
+                    onRetry: () {
+                      MapAttribution.instance.retry(kind);
+                      _retryTiles();
+                    },
                   ),
                 ),
               ),
-            ),
-          ),
-        ),
-        if (_tilesFailed)
-          Positioned(
-            top: widget.topPadding + 8,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Material(
-                color: const Color(0xE61C1C1E),
-                borderRadius: BorderRadius.circular(18),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(18),
-                  onTap: _retryTiles,
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    child: Text(
-                      'Map images need a connection. Tap to retry.',
-                      style: TextStyle(fontSize: 12, color: Colors.white),
+              if (_tilesFailed)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Center(
+                    child: Material(
+                      color: const Color(0xE61C1C1E),
+                      shape: Corners.shape(Corners.md),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        customBorder: Corners.shape(Corners.md),
+                        onTap: _retryTiles,
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          child: Text(
+                            'Map images need a connection. Tap to retry.',
+                            style: TextStyle(fontSize: 12, color: Colors.white),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ),
+            ],
           ),
+        ),
         Positioned(
           right: 12,
           bottom: widget.bottomPadding + (selectedItems.isEmpty ? 16 : 16 + 96),
-          child: Material(
-            color: const Color(0xE61C1C1E),
-            shape: const CircleBorder(),
-            child: IconButton(
-              tooltip: 'Show all locations',
-              color: Colors.white,
-              onPressed: _fit,
-              icon: const Icon(Icons.zoom_out_map_rounded, size: 20),
-            ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            spacing: 8,
+            children: [
+              Material(
+                color: const Color(0xE61C1C1E),
+                shape: Corners.shape(Corners.md),
+                clipBehavior: Clip.antiAlias,
+                child: PopupMenuButton<MapKind>(
+                  tooltip: 'Map style: ${kind.label}',
+                  icon: const Icon(
+                    Icons.layers_outlined,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                  color: const Color(0xF21C1C1E),
+                  initialValue: kind,
+                  onSelected: (value) => SettingsController.instance.update(
+                    () => SettingsController.instance.mapKind = value,
+                  ),
+                  itemBuilder: (_) => [
+                    for (final value in MapKind.values)
+                      CheckedPopupMenuItem<MapKind>(
+                        value: value,
+                        checked: kind == value,
+                        child: Text(
+                          value.label,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Material(
+                color: const Color(0xE61C1C1E),
+                shape: Corners.shape(Corners.md),
+                clipBehavior: Clip.antiAlias,
+                child: IconButton(
+                  tooltip: 'Show all locations',
+                  color: Colors.white,
+                  onPressed: _fit,
+                  icon: const Icon(Icons.zoom_out_map_rounded, size: 20),
+                ),
+              ),
+            ],
           ),
         ),
         if (selectedItems.isNotEmpty)
@@ -348,7 +396,7 @@ class _MediaMapState extends State<MediaMap> {
             height: 84,
             child: Material(
               color: const Color(0xF21C1C1E),
-              borderRadius: BorderRadius.circular(16),
+              shape: Corners.shape(Corners.md),
               clipBehavior: Clip.antiAlias,
               child: PageView.builder(
                 controller: _previewPages,
@@ -444,16 +492,19 @@ class _MarkerPreview extends StatelessWidget {
     final at = location;
     final where = at == null
         ? ''
-        : at.place.isNotEmpty
-        ? at.place
-        : '${at.lat.toStringAsFixed(5)}, ${at.lon.toStringAsFixed(5)}';
+        : [
+            at.place.isNotEmpty
+                ? at.place
+                : '${at.lat.toStringAsFixed(5)}, ${at.lon.toStringAsFixed(5)}',
+            if (at.integrityNote.isNotEmpty) at.integrityNote,
+          ].join(' · ');
     return InkWell(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.all(10),
         child: Row(
           children: [
-            ClipRRect(
+            ClipRSuperellipse(
               borderRadius: BorderRadius.circular(8),
               child: SizedBox.square(
                 dimension: 64,
@@ -487,7 +538,7 @@ class _MarkerPreview extends StatelessWidget {
                     where,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, color: Colors.white70),
+                    style: AppText.label,
                   ),
                   const SizedBox(height: 2),
                   Row(
@@ -545,11 +596,7 @@ class _MapMessage extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
-          ),
+          Text(title, textAlign: TextAlign.center, style: AppText.title),
           if (detail != null) ...[
             const SizedBox(height: 6),
             Text(

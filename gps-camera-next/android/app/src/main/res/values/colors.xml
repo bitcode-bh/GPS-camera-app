@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- App ink (matches Palette.ink) — used for the launch window so there is
+    <!-- Black launch canvas (matches the branded loading view) — used for the launch window so there is
          no white/wallpaper flash before Flutter draws its first frame. -->
-    <color name="launch_bg">#FF05070D</color>
+    <color name="launch_bg">#FF000000</color>
 	<color name="ic_launcher_background">#1C1C1E</color>
 </resources>

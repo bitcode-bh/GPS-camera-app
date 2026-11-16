@@ -35,17 +35,19 @@ class TemplatesScreen extends StatelessWidget {
             ).push(SheetRoute(page: const CustomTemplateEditor())),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
-              decoration: BoxDecoration(
+              decoration: ShapeDecoration(
                 gradient: Palette.selectionGradient,
-                boxShadow: const [
+                shadows: const [
                   BoxShadow(
                     color: Palette.selectionGlow,
                     blurRadius: 14,
                     spreadRadius: -3,
                   ),
                 ],
-                borderRadius: BorderRadius.circular(Corners.pill),
-                border: Border.all(color: Palette.selectionStroke, width: 1),
+                shape: Corners.shape(
+                  Corners.sm,
+                  side: const BorderSide(color: Palette.selectionStroke),
+                ),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -56,7 +58,7 @@ class TemplatesScreen extends StatelessWidget {
                     'Customize',
                     style: AppText.label.copyWith(
                       color: Palette.textHi,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
@@ -144,7 +146,7 @@ class _TemplateCard extends StatelessWidget {
               ),
               const SizedBox(height: Insets.sm),
               // Preview over a faux-photo backdrop.
-              ClipRRect(
+              ClipRSuperellipse(
                 borderRadius: BorderRadius.circular(Corners.md),
                 child: Container(
                   padding: const EdgeInsets.all(10),
@@ -186,10 +188,12 @@ class _NewBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
+      decoration: ShapeDecoration(
         color: Palette.selectionFill,
-        borderRadius: BorderRadius.circular(Corners.pill),
-        border: Border.all(color: Palette.selectionStroke, width: 1),
+        shape: Corners.shape(
+          Corners.xs,
+          side: const BorderSide(color: Palette.selectionStroke),
+        ),
       ),
       child: Text(
         'NEW',

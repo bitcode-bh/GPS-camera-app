@@ -4,7 +4,9 @@ import '../../models/media_item.dart';
 import '../../services/capture_service.dart';
 import '../../services/media_library.dart';
 import '../../state/settings_controller.dart';
-import '../camera/widgets/camera_design.dart';
+import '../../widgets/pinshutter_brand.dart';
+import '../../core/widgets/controls.dart';
+import '../../core/design/text_styles.dart';
 import 'media_grid.dart';
 import 'media_map.dart';
 import '../../services/native_location.dart';
@@ -48,9 +50,23 @@ class _LibraryScreenState extends State<LibraryScreen> {
   @override
   Widget build(BuildContext context) {
     final padding = MediaQuery.paddingOf(context);
-    final topPadding = padding.top + 56;
+    final topPadding = padding.top + 64;
     return Scaffold(
       backgroundColor: Colors.black,
+      bottomNavigationBar: ColoredBox(
+        color: Colors.black,
+        child: SafeArea(
+          top: false,
+          minimum: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: SizedBox(
+            key: const ValueKey('library-bottom-navigation'),
+            height: 56,
+            child: Center(
+              child: _Segments(map: _showMap, onChanged: _selectTab),
+            ),
+          ),
+        ),
+      ),
       body: ListenableBuilder(
         listenable: _library,
         builder: (context, _) => Stack(
@@ -59,13 +75,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
               index: _showMap ? 1 : 0,
               sizing: StackFit.expand,
               children: [
-                _gridTab(topPadding, padding.bottom),
+                _gridTab(topPadding, 8),
                 if (_mapBuilt)
                   MediaMap(
                     library: _library,
                     onOpen: _open,
                     topPadding: topPadding,
-                    bottomPadding: padding.bottom,
+                    bottomPadding: 8,
                   )
                 else
                   const SizedBox.shrink(),
@@ -85,27 +101,32 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 ),
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(4, padding.top + 4, 4, 12),
-                  child: Row(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      IconButton(
-                        tooltip: 'Back to camera',
-                        color: Colors.white,
-                        onPressed: () => Navigator.of(context).maybePop(),
-                        icon: const Icon(Icons.arrow_back_ios_new_rounded),
-                      ),
-                      Expanded(
-                        child: Center(
-                          child: _Segments(
-                            map: _showMap,
-                            onChanged: _selectTab,
+                      Row(
+                        children: [
+                          IconButton(
+                            tooltip: 'Back to camera',
+                            color: Colors.white,
+                            onPressed: () => Navigator.of(context).maybePop(),
+                            icon: const Icon(Icons.arrow_back_ios_new_rounded),
                           ),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Open device gallery',
-                        color: Colors.white,
-                        onPressed: CaptureService.instance.openGallery,
-                        icon: const Icon(Icons.open_in_new_rounded, size: 20),
+                          const Expanded(
+                            child: Center(
+                              child: PinShutterWordmark(width: 156),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Open device gallery',
+                            color: Colors.white,
+                            onPressed: CaptureService.instance.openGallery,
+                            icon: const Icon(
+                              Icons.open_in_new_rounded,
+                              size: 20,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -162,54 +183,20 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
 class _Segments extends StatelessWidget {
   const _Segments({required this.map, required this.onChanged});
-
   final bool map;
   final ValueChanged<bool> onChanged;
 
   @override
-  Widget build(BuildContext context) => Container(
-    height: 36,
-    padding: const EdgeInsets.all(3),
-    decoration: BoxDecoration(
-      color: const Color(0xE6171717),
-      borderRadius: BorderRadius.circular(18),
-    ),
-    child: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (final (label, value) in const [('Library', false), ('Map', true)])
-          Semantics(
-            button: true,
-            selected: map == value,
-            label: label,
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => onChanged(value),
-              child: ExcludeSemantics(
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 160),
-                  constraints: const BoxConstraints(minWidth: 84),
-                  alignment: Alignment.center,
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                  decoration: BoxDecoration(
-                    color: map == value
-                        ? const Color(0xFF3A3A3C)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  child: Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: map == value ? cameraYellow : Colors.white70,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: const BoxConstraints(maxWidth: 260),
+    child: GlassSegmented<bool>(
+      options: const [
+        (value: false, label: 'Library'),
+        (value: true, label: 'Map'),
       ],
+      selected: map,
+      height: 56,
+      onChanged: onChanged,
     ),
   );
 }
@@ -234,11 +221,7 @@ class _Message extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
-          ),
+          Text(title, textAlign: TextAlign.center, style: AppText.title),
           if (detail != null) ...[
             const SizedBox(height: 6),
             Text(

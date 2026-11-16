@@ -10,6 +10,9 @@ class Fix {
     this.altitude = 0,
     this.heading = -1,
     this.speed = -1,
+    this.isMock = false,
+    this.elapsedRealtimeNanos,
+    this.ageAtReceipt,
   });
 
   factory Fix.fromMap(Map<Object?, Object?> m) => Fix(
@@ -19,6 +22,13 @@ class Fix {
     accuracy: (m['accuracy'] as num?)?.toDouble() ?? double.nan,
     heading: (m['heading'] as num?)?.toDouble() ?? -1,
     speed: (m['speed'] as num?)?.toDouble() ?? -1,
+    isMock: m['isMock'] == true,
+    elapsedRealtimeNanos: (m['elapsedRealtimeNanos'] as num?)?.toInt(),
+    ageAtReceipt: m['ageNanos'] is num
+        ? Duration(
+            microseconds: ((m['ageNanos'] as num).toInt() / 1000).round(),
+          )
+        : null,
     timestamp: DateTime.fromMillisecondsSinceEpoch(
       (m['time'] as num).toInt(),
       isUtc: true,
@@ -38,6 +48,14 @@ class Fix {
   /// m/s; negative when unknown.
   final double speed;
   final DateTime timestamp;
+  final bool isMock;
+  final int? elapsedRealtimeNanos;
+  final Duration? ageAtReceipt;
+
+  double secondsSince(Fix previous) =>
+      elapsedRealtimeNanos != null && previous.elapsedRealtimeNanos != null
+      ? (elapsedRealtimeNanos! - previous.elapsedRealtimeNanos!) / 1e9
+      : timestamp.difference(previous.timestamp).inMicroseconds / 1e6;
 }
 
 enum LocationPermit { granted, denied, deniedForever }

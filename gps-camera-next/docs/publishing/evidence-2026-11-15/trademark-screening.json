@@ -1,0 +1,22 @@
+{
+  "assessment_date": "2026-11-15",
+  "registry": "USPTO",
+  "exact_query": "CM:\"GPS CAMERA NEXT\"",
+  "exact_query_result": "No results returned; limited exact search, not clearance",
+  "related_query": "CM:(\"GPS CAMERA\" OR \"GPS MAP CAMERA\")",
+  "related_query_result_count": 1,
+  "related_mark": {
+    "wordmark": "GPS CAMERA - MAP TIMESTAMP CAM",
+    "serial": "99781619",
+    "status": "LIVE / PENDING",
+    "registration_number": null,
+    "filing_date": "2026-04-23",
+    "status_date": "2026-09-22",
+    "case_status": "Non-final Office action issued; pending examination/response",
+    "class": "009",
+    "owner": "Hong Kong iArtTech Software Technology Co., Limited",
+    "relevant_goods": "Downloadable photo/image/video editing and photo organization/viewing software among other goods",
+    "url": "https://tmsearch.uspto.gov/search/search-results/99781619"
+  },
+  "limitations": "No worldwide/figurative/common-law legal clearance. Other national/regional searches incomplete."
+}

@@ -1,0 +1,17 @@
+Running Gradle task 'bundleRelease'...                          
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:validateProductionConfiguration'.
+> Production release blocked: provide a complete local android/key.properties and upload keystore. Debug signing is never used for release.
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to generate a Build Scan (Powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 1s
+Running Gradle task 'bundleRelease'...                           1,513ms
+Gradle task bundleRelease failed with exit code 1

@@ -1,5 +1,10 @@
 # Google Play pre-publication compliance audit — GPS Camera Next
 
+> Historical 14 November findings. Current evidence and corrections are in the
+> [15 November assessment](/Volumes/Bitcode/GitHub/GPS-camera-app/gps-camera-next/docs/publishing/deployment-readiness-2026-11-15.md)
+> and [remediation status](/Volumes/Bitcode/GitHub/GPS-camera-app/gps-camera-next/docs/publishing/remediation-2026-11-15.md).
+> Ownership is not established by comments or this older table; preserve provenance references until rights are resolved.
+
 Audited: branch `claude/gps-camera-next-production-be862f`, package
 `com.gpscamera.gps_camera_next`, version `0.1.0+1`, on 14 Nov 2026.
 Method: source inspection (every network endpoint, dependency, asset and

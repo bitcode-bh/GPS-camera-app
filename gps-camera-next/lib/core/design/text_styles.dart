@@ -23,8 +23,8 @@ class AppText {
   );
 
   static const TextStyle h1 = TextStyle(
-    fontSize: 28,
-    height: 34 / 28,
+    fontSize: 24,
+    height: 30 / 24,
     fontWeight: FontWeight.w500,
     letterSpacing: -0.3,
     color: Palette.textHi,

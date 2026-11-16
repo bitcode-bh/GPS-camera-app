@@ -1,0 +1,192 @@
+{
+  "assessment_date": "2026-11-15",
+  "package": "com.gpscamera.gps_camera_next",
+  "version": "0.1.0+1",
+  "aab_size_bytes": 59385587,
+  "aab_sha256": "ca9f97fef1e6b71082fafadfca473c8df7750d525d1c8e82a66b7e68bd79d979",
+  "dart_main_count": 29,
+  "dart_dev_only_count": 27,
+  "android_runtime_coordinate_count": 94,
+  "elf": [
+    {
+      "file": "base/lib/arm64-v8a/libapp.so",
+      "load_segment_alignment": [
+        65536,
+        65536,
+        65536
+      ],
+      "at_least_16kb": true
+    },
+    {
+      "file": "base/lib/arm64-v8a/libflutter.so",
+      "load_segment_alignment": [
+        65536,
+        65536,
+        65536
+      ],
+      "at_least_16kb": true
+    },
+    {
+      "file": "base/lib/arm64-v8a/libimage_processing_util_jni.so",
+      "load_segment_alignment": [
+        16384,
+        16384,
+        16384
+      ],
+      "at_least_16kb": true
+    },
+    {
+      "file": "base/lib/arm64-v8a/libsurface_util_jni.so",
+      "load_segment_alignment": [
+        16384,
+        16384
+      ],
+      "at_least_16kb": true
+    },
+    {
+      "file": "base/lib/armeabi-v7a/libapp.so",
+      "load_segment_alignment": [
+        16384,
+        16384,
+        16384
+      ],
+      "at_least_16kb": true
+    },
+    {
+      "file": "base/lib/armeabi-v7a/libflutter.so",
+      "load_segment_alignment": [
+        65536,
+        65536,
+        65536
+      ],
+      "at_least_16kb": true
+    },
+    {
+      "file": "base/lib/armeabi-v7a/libimage_processing_util_jni.so",
+      "load_segment_alignment": [
+        16384,
+        16384,
+        16384
+      ],
+      "at_least_16kb": true
+    },
+    {
+      "file": "base/lib/armeabi-v7a/libsurface_util_jni.so",
+      "load_segment_alignment": [
+        16384,
+        16384
+      ],
+      "at_least_16kb": true
+    },
+    {
+      "file": "base/lib/x86_64/libapp.so",
+      "load_segment_alignment": [
+        65536,
+        65536,
+        65536
+      ],
+      "at_least_16kb": true
+    },
+    {
+      "file": "base/lib/x86_64/libflutter.so",
+      "load_segment_alignment": [
+        65536,
+        65536,
+        65536
+      ],
+      "at_least_16kb": true
+    },
+    {
+      "file": "base/lib/x86_64/libimage_processing_util_jni.so",
+      "load_segment_alignment": [
+        16384,
+        16384,
+        16384
+      ],
+      "at_least_16kb": true
+    },
+    {
+      "file": "base/lib/x86_64/libsurface_util_jni.so",
+      "load_segment_alignment": [
+        16384,
+        16384
+      ],
+      "at_least_16kb": true
+    }
+  ],
+  "fonts": [
+    {
+      "family": "MaterialIcons",
+      "fonts": [
+        {
+          "asset": "fonts/MaterialIcons-Regular.otf"
+        }
+      ]
+    }
+  ],
+  "notices_uncompressed_bytes": 1336467,
+  "notices_sha256": "0f59c9af2a2a08b06bcb0e83f9d4ab93ab40ee9d9d8ac33f5c6f4c8799c1c235",
+  "full_apache_text_packaged": true,
+  "embedded_meta_licenses": [
+    "base/assets/flutter_assets/NOTICES.Z",
+    "base/root/META-INF/NOTICE.md",
+    "base/root/META-INF/androidx/annotation/annotation/LICENSE.txt"
+  ],
+  "permissions": [
+    {
+      "name": "android.permission.CAMERA",
+      "maxSdk": null
+    },
+    {
+      "name": "android.permission.WRITE_EXTERNAL_STORAGE",
+      "maxSdk": "28"
+    },
+    {
+      "name": "android.permission.READ_EXTERNAL_STORAGE",
+      "maxSdk": "28"
+    },
+    {
+      "name": "android.permission.RECORD_AUDIO",
+      "maxSdk": null
+    },
+    {
+      "name": "android.permission.ACCESS_FINE_LOCATION",
+      "maxSdk": null
+    },
+    {
+      "name": "android.permission.ACCESS_COARSE_LOCATION",
+      "maxSdk": null
+    },
+    {
+      "name": "android.permission.INTERNET",
+      "maxSdk": null
+    },
+    {
+      "name": "android.permission.ACCESS_NETWORK_STATE",
+      "maxSdk": null
+    },
+    {
+      "name": "android.permission.WAKE_LOCK",
+      "maxSdk": null
+    },
+    {
+      "name": "com.gpscamera.gps_camera_next.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
+      "maxSdk": null
+    }
+  ],
+  "target_sdk": 36,
+  "min_sdk": 24,
+  "allow_backup_explicit": null,
+  "debuggable": "false (default)",
+  "bundletool_validation_exit_code": 0,
+  "bundletool_version": "1.18.3",
+  "bundletool_binary_sha256": "a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37fdfd6d91028e29",
+  "bundle_native_packaging_alignment": "PAGE_ALIGNMENT_16K",
+  "connected_device_page_size": 4096,
+  "runtime_16kb_tested": false,
+  "dex_total_bytes": 17370612,
+  "release_signer": "Android Debug",
+  "release_r8_enabled": false,
+  "flutter_analyze": "clean",
+  "flutter_test_pass_count": 145
+}

@@ -12,7 +12,11 @@
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
 
     <application
-        android:label="GPS Camera Next"
+        android:allowBackup="false"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:usesCleartextTraffic="false"
+        android:label="PinShutter"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

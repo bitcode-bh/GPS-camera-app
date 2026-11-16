@@ -13,6 +13,7 @@ import android.location.Geocoder
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.net.Uri
 import android.provider.MediaStore
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.EventChannel
@@ -30,6 +31,8 @@ class PlatformChannel(private val activity: Activity, messenger: BinaryMessenger
     private val main = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor()
     private val sensors = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    private var gyroMagnitude = Double.NaN
+    private var gyroAt = 0L
 
     init {
         MethodChannel(messenger, "com.gpscamera.gps_camera_next/platform").setMethodCallHandler { call, result ->
@@ -43,6 +46,7 @@ class PlatformChannel(private val activity: Activity, messenger: BinaryMessenger
                 )
                 "appVersion" -> result.success(appVersion())
                 "openGallery" -> result.success(openGallery())
+                "openWebPage" -> result.success(openWebPage(call.argument<String>("url")))
                 "geocode" -> {
                     val lat = call.argument<Double>("lat")
                     val lon = call.argument<Double>("lon")
@@ -65,6 +69,7 @@ class PlatformChannel(private val activity: Activity, messenger: BinaryMessenger
                 listOf(
                     event.values[0].toDouble(), event.values[1].toDouble(), event.values[2].toDouble(),
                     event.timestamp / 1e9,
+                    if (event.timestamp - gyroAt in 0..1_000_000_000L) gyroMagnitude else Double.NaN,
                 )
             })
     }
@@ -98,6 +103,17 @@ class PlatformChannel(private val activity: Activity, messenger: BinaryMessenger
             }
         }
         return false
+    }
+
+    private fun openWebPage(value: String?): Boolean {
+        val uri = value?.let(Uri::parse) ?: return false
+        if (uri.scheme != "https" || uri.host.isNullOrBlank() || !uri.userInfo.isNullOrEmpty()) return false
+        return try {
+            activity.startActivity(Intent(Intent.ACTION_VIEW, uri).addCategory(Intent.CATEGORY_BROWSABLE))
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     /** The device's own geocoder. Returns null when the phone has none. */
@@ -152,14 +168,28 @@ class PlatformChannel(private val activity: Activity, messenger: BinaryMessenger
             val sensor = sensors.getDefaultSensor(type) ?: return events.endOfStream()
             sink = events
             sensors.registerListener(this, sensor, delay)
+            if (type == Sensor.TYPE_ACCELEROMETER) {
+                sensors.getDefaultSensor(Sensor.TYPE_GYROSCOPE)?.let {
+                    sensors.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
+                }
+            }
         }
 
         override fun onCancel(arguments: Any?) {
             sensors.unregisterListener(this)
+            if (type == Sensor.TYPE_ACCELEROMETER) {
+                gyroMagnitude = Double.NaN
+                gyroAt = 0L
+            }
             sink = null
         }
 
         override fun onSensorChanged(event: SensorEvent) {
+            if (event.sensor.type == Sensor.TYPE_GYROSCOPE) {
+                gyroMagnitude = kotlin.math.sqrt(event.values.take(3).sumOf { it.toDouble() * it })
+                gyroAt = event.timestamp
+                return
+            }
             sink?.success(read(event))
         }
 

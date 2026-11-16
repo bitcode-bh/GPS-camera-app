@@ -1,0 +1,32 @@
+{
+  "date": "2026-11-15",
+  "branch": "fix/production-readiness-20261115",
+  "flutter_tests_passed": 155,
+  "python_tests_passed": 2,
+  "analysis": "clean",
+  "debug_build": "success",
+  "debug_apk_sha256": "29572bea074240387d12dc1ff1c4b6ba1cdb58cc9d06ffd30d2974823e689e8b",
+  "debug_apk_size_bytes": 171334408,
+  "package": "com.gpscamera.gps_camera_next.debug",
+  "target_sdk": 36,
+  "allow_backup": false,
+  "cleartext_traffic": false,
+  "backup_rules_packaged": [
+    "res/xml/backup_rules.xml",
+    "res/xml/data_extraction_rules.xml"
+  ],
+  "native_components": 94,
+  "apk_native_notice_assets_match_source": true,
+  "guava": "33.7.2-android",
+  "osv_queries": 120,
+  "osv_advisory_matches": 0,
+  "release_build": "blocked as intended: missing owner upload credentials; no new production artifact qualified",
+  "new_device_install_or_ui_smoke": false,
+  "limitations": [
+    "No final owner-signed/R8/map-authenticated artifact tested.",
+    "No 16KB runtime or sustained performance/physical movement qualification.",
+    "OSV does not prove absence of vulnerabilities; engine-vendored component versions not matched.",
+    "Worldwide/Indian trademark and ownership/provider rights remain unverified."
+  ],
+  "development_map_metadata": "All four public layer copyrightText fields verified using system curl with TLS verification enabled; no credentials/coordinates sent."
+}

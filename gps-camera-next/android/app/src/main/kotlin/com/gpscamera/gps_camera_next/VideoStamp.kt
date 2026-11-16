@@ -58,9 +58,18 @@ internal object VideoStamp {
                 .setOverlayFrameAnchor(-1f, -1f)
                 .setBackgroundFrameAnchor(-0.94f, -0.94f)
                 .build()
+            val hiddenSettings = StaticOverlaySettings.Builder().setAlphaScale(0f).build()
+            fun hideText(atMs: Long): Boolean {
+                val sample = samples.getOrNull(indexAt(samples, atMs))
+                val frame = frames.getOrNull(indexAt(frames, atMs))
+                return sample?.second == "Stamp disabled" ||
+                    (stampRect != null && frame != null && frame.first >= (sample?.first ?: 0L))
+            }
             val overlay = object : TextOverlay() {
                 private var fontSize = 24
                 private var lastSecond = Long.MIN_VALUE
+                private var lastSample = -2
+                private var lastPicture = false
                 private var text = SpannableString("")
 
                 override fun configure(videoSize: Size) {
@@ -69,16 +78,25 @@ internal object VideoStamp {
                         .toInt().coerceAtLeast(14)
                 }
 
-                override fun getOverlaySettings(presentationTimeUs: Long) = settings
+                override fun getOverlaySettings(presentationTimeUs: Long) =
+                    if (hideText(presentationTimeUs / 1000)) hiddenSettings else settings
 
                 override fun getText(presentationTimeUs: Long): SpannableString {
                     val second = presentationTimeUs / 1_000_000
-                    if (second == lastSecond) return text
+                    val atMs = presentationTimeUs / 1000
+                    val index = indexAt(samples, atMs)
+                    val picture = hideText(atMs)
+                    if (second == lastSecond && index == lastSample && picture == lastPicture) return text
                     lastSecond = second
-                    val atMs = second * 1000
-                    val index = samples.binarySearchBy(atMs) { it.first }
-                    val location = samples.getOrNull(if (index >= 0) index else -index - 2)
-                        ?.second.orEmpty()
+                    lastSample = index
+                    lastPicture = picture
+                    val location = samples.getOrNull(index)?.second.orEmpty()
+                    if (picture) {
+                        // Media3 rasterises even a transparent TextOverlay;
+                        // an empty string would create a zero-width bitmap.
+                        text = SpannableString(".")
+                        return text
+                    }
                     val timestamp = format.format(Date(startedAtMs + atMs))
                     text = SpannableString(
                         if (location.isEmpty()) timestamp else "$timestamp\n$location"
@@ -87,7 +105,7 @@ internal object VideoStamp {
                         setSpan(ForegroundColorSpan(Color.WHITE), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                         setSpan(object : CharacterStyle() {
                             override fun updateDrawState(paint: TextPaint) {
-                                paint.setShadowLayer(3f, 0f, 1.5f, Color.BLACK)
+                                paint.setShadowLayer(1f, 0f, 0.5f, Color.argb(102, 0, 0, 0))
                             }
                         }, 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                     }
@@ -96,14 +114,14 @@ internal object VideoStamp {
             }
             // The same stamp as a photo: pictures of the on-screen stamp, placed
             // where it sits in the viewfinder. The text stamp is the fallback.
-            val stamp: TextureOverlay =
+            val stamps: List<TextureOverlay> =
                 if (frames.isNotEmpty() && stampRect != null) {
-                    pictureOverlay(frames, stampRect)
+                    listOf(pictureOverlay(frames, samples, stampRect), overlay)
                 } else {
-                    overlay
+                    listOf(overlay)
                 }
             val item = EditedMediaItem.Builder(MediaItem.fromUri(Uri.fromFile(source)))
-                .setEffects(Effects(emptyList(), videoEffects(quarterTurns, stamp)))
+                .setEffects(Effects(emptyList(), videoEffects(quarterTurns, stamps)))
                 .build()
             Transformer.Builder(context)
                 .addListener(object : Transformer.Listener {
@@ -130,15 +148,22 @@ internal object VideoStamp {
 
     /// A sideways recording is turned upright first, like a sideways photo,
     /// so the stamp reads level in the landscape video.
-    private fun videoEffects(quarterTurns: Int, stamp: TextureOverlay) = buildList {
+    private fun videoEffects(quarterTurns: Int, stamps: List<TextureOverlay>) = buildList {
         val turns = Math.floorMod(quarterTurns, 4)
         if (turns != 0) {
             add(ScaleAndRotateTransformation.Builder().setRotationDegrees(turns * 90f).build())
         }
-        add(OverlayEffect(listOf(stamp)))
+        add(OverlayEffect(stamps))
     }
 
-    private fun pictureOverlay(frames: List<Pair<Long, File>>, rect: List<Float>): BitmapOverlay {
+    private fun <T> indexAt(items: List<Pair<Long, T>>, atMs: Long): Int {
+        val hit = items.binarySearchBy(atMs) { it.first }
+        return if (hit >= 0) hit else -hit - 2
+    }
+
+    private fun pictureOverlay(
+        frames: List<Pair<Long, File>>, samples: List<Pair<Long, String>>, rect: List<Float>
+    ): BitmapOverlay {
         val (left, bottom, width) = rect
         val settings = StaticOverlaySettings.Builder()
             .setOverlayFrameAnchor(-1f, -1f)
@@ -151,6 +176,7 @@ internal object VideoStamp {
             private var targetWidth = 0
             private var shown = -1
             private var bitmap: Bitmap? = null
+            private val empty = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
 
             override fun configure(videoSize: Size) {
                 super.configure(videoSize)
@@ -161,11 +187,15 @@ internal object VideoStamp {
 
             override fun getBitmap(presentationTimeUs: Long): Bitmap {
                 val atMs = presentationTimeUs / 1000
-                val index = frames.indexOfLast { it.first <= atMs }.coerceAtLeast(0)
+                val index = indexAt(frames, atMs)
+                val sample = samples.getOrNull(indexAt(samples, atMs))
+                // A missing frame must never extend an older map or remove a
+                // newer integrity warning; the text overlay covers this interval.
+                if (index < 0 || frames[index].first < (sample?.first ?: 0L)) return empty
                 val current = bitmap
                 if (index == shown && current != null) return current
                 val decoded = BitmapFactory.decodeFile(frames[index].second.absolutePath)
-                    ?: return current ?: Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+                    ?: throw IllegalStateException("Could not decode video stamp")
                 val height = (decoded.height * targetWidth.toFloat() / decoded.width)
                     .toInt().coerceAtLeast(1)
                 val scaled = Bitmap.createScaledBitmap(decoded, targetWidth, height, true)
